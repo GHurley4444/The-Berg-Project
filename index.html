@@ -139,6 +139,12 @@ h3.label small{letter-spacing:.04em;text-transform:none;font-size:12px;opacity:.
 .amt[aria-pressed="true"]:not(:disabled){background:var(--seam);border-color:var(--seam);color:var(--ink)}
 .amt:disabled{opacity:.35}
 
+.gamecard{background:var(--night-2);border:2px solid var(--seam);border-radius:18px;padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.gamecard h3{margin:0;font:clamp(28px,9vw,40px)/1 var(--display);text-transform:uppercase;color:var(--seam);text-wrap:balance}
+.gamecard p{margin:0}
+.gamecard .eyebrow{color:var(--muted)}
+.duelscore{font-weight:700;font-variant-numeric:tabular-nums;padding-top:6px;border-top:1px solid var(--night-3)}
+
 /* Payout + final */
 .hero{display:flex;flex-direction:column;gap:6px}
 .huge{margin:0;font:clamp(36px,12vw,64px)/1 var(--display);text-transform:uppercase;color:var(--seam);overflow-wrap:anywhere}
@@ -150,7 +156,7 @@ h3.label small{letter-spacing:.04em;text-transform:none;font-size:12px;opacity:.
 .paylist .nm small{color:var(--muted);font-weight:400}
 .paylist .pt{text-align:right;color:var(--muted)}
 .delta{font:18px/1 var(--display)}
-.delta.up{color:var(--good)} .delta.down{color:var(--badc)}
+.delta{color:var(--muted)} .delta.up{color:var(--good)} .delta.down{color:var(--badc)}
 
 /* Library */
 .glist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -344,7 +350,7 @@ canvas.sketch{width:min(100%,340px);height:min(62%,240px);background:var(--card)
   <div class="menu"></div>
   <ul class="how">
     <li><span class="n">1</span><span>Add everyone. The app draws a <b>bracket</b>.</span></li>
-    <li><span class="n">2</span><span>Before each duel, the watchers <b>bet points</b>. Backing the underdog pays more.</span></li>
+    <li><span class="n">2</span><span>Each mini-game is <b>revealed first</b>. Then the watchers <b>bet points</b> on who'll win it. Backing the underdog pays more.</span></li>
     <li><span class="n">3</span><span>Lay the phone flat between the two duelists. Each owns their half of the screen.</span></li>
     <li><span class="n">4</span><span>Win duels to climb the bracket. Bet well to top the <b>points board</b>.</span></li>
   </ul>

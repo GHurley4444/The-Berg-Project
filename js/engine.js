@@ -124,16 +124,25 @@ function newRound(g) {
 /* ---------- Duel flow ---------- */
 function later(ms, fn) { clearTimeout(D.timer); D.timer = setTimeout(fn, ms); }
 
-// cfg: { names:[bottom, top], need, next() -> game, endActions:[{label, act, primary}], onAction(act, winner), onQuit() }
+// cfg: { names:[bottom, top], need, next() -> game, endActions:[{label, act, primary}], onAction(act, winner), onQuit(),
+//        score?, round?, beforeGame?(game, go), afterGame?(winner|null) }
+// beforeGame lets the host take bets once the game is known; afterGame takes over after each result.
 function startDuel(cfg) {
   stopAll();
-  D.cfg = cfg; D.score = [0, 0]; D.round = 0; D.winner = null;
+  D.cfg = cfg; D.score = (cfg.score || [0, 0]).slice(); D.round = cfg.round || 0; D.winner = null;
+  showGameScreen(); nextGame();
+}
+function showGameScreen() {
   $$(".screen").forEach(s => { s.hidden = true; });
   $("#pause").hidden = true; $("#game").hidden = false;
-  keepAwake(); nextGame();
+  keepAwake();
 }
-function nextGame() { D.game = D.cfg.next(); D.round++; intro(); }
-
+function nextGame() {
+  D.game = D.cfg.next(); D.round++;
+  if (!D.cfg.beforeGame) return intro();
+  D.phase = "betting"; $("#game").hidden = true;
+  D.cfg.beforeGame(D.game, () => { showGameScreen(); intro(); });
+}
 function renderStatus() {
   const goal = D.cfg.need === 1 ? "one game" : `first to ${D.cfg.need}`;
   for (const p of [0, 1]) statusEl[p].innerHTML = `<span class="me">${name(p)}<b>${D.score[p]}</b></span><span class="goal">${goal}</span><span class="them"><b>${D.score[1 - p]}</b>${name(1 - p)}</span>`;
@@ -175,7 +184,7 @@ function finish(R, w, m = {}) {
   }
   if (w != null) { halves[w].classList.remove("flash"); void halves[w].offsetWidth; halves[w].classList.add("flash"); beep(784, 0.1); setTimeout(() => beep(1046, 0.14), 100); buzz(50); }
   else beep(440, 0.12, "triangle");
-  later(2300, () => (w != null && D.score[w] >= D.cfg.need) ? duelOver(w) : nextGame());
+  later(2300, () => D.cfg.afterGame ? D.cfg.afterGame(w) : (w != null && D.score[w] >= D.cfg.need) ? duelOver(w) : nextGame());
 }
 
 function duelOver(w) {

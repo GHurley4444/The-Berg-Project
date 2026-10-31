@@ -65,7 +65,7 @@ function renderSetup(keep) {
       <h3 class="label">Game types <small>${pool} games in the mix</small></h3>
       <div class="chips">${Object.entries(CATS).map(([k, v]) => `<button class="chip" data-a="cat" data-v="${k}" aria-pressed="${SP.cats.includes(k)}">${v} <small>${GAMES.filter(g => g.cat === k).length}</small></button>`).join("")}</div>
     </section>
-    <p class="note">Everyone starts with ${START_POINTS} points. Before each duel, the watchers bet on who'll win. Winning a duel earns ${WIN_BONUS} points.</p>
+    <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Winning a duel earns ${WIN_BONUS} points.</p>
     <button class="start" data-a="go" ${n < 2 || !pool ? "disabled" : ""}>${n < 2 ? "Add at least 2 players" : !pool ? "Pick a game type" : `Start with ${n} players`}</button>`;
   show("setup");
   $("#addForm").addEventListener("submit", e => {
@@ -130,7 +130,7 @@ function renderBracket() {
     const resume = T.pending && T.pending.r === cur.r && T.pending.i === cur.i;
     next = `<section class="nextup"><p class="eyebrow">Up next · ${roundName(cur.r)}</p>
       <div class="vs"><span class="red-t">${esc(A.name)}</span><span class="v">vs</span><span class="blue-t">${esc(B.name)}</span></div>
-      <button class="start" data-a="${resume ? "resume" : watchers ? "bets" : "duel"}">${resume ? "Resume duel" : watchers ? "Take bets" : "Start duel"}</button></section>`;
+      <button class="start" data-a="${resume ? "resume" : "duel"}">${resume ? "Resume duel" : watchers ? "Reveal the first game" : "Start duel"}${watchers ? "<small>Watchers bet once they see the game</small>" : ""}</button></section>`;
   }
   const cols = T.rounds.map((round, r) => `<div class="rcol"><p class="rname">${roundName(r)}</p>${round.map((m, i) => {
     const isCur = cur && cur.r === r && cur.i === i;
@@ -146,8 +146,11 @@ function renderBracket() {
 }
 bind("bracket", a => {
   if (a === "home") { T.endArm = false; return renderHome(); }
-  if (a === "bets") return renderBets(true);
-  if (a === "duel") { lockBets([]); return runTournamentDuel(); }
+  if (a === "duel") {
+    const cur = currentMatch();
+    T.pending = { r: cur.r, i: cur.i, score: [0, 0], round: 0, gameId: null, bets: null };
+    saveT(); return runTournamentDuel();
+  }
   if (a === "resume") return runTournamentDuel();
   if (a === "final") return renderFinal();
   if (a === "end") {
@@ -156,54 +159,8 @@ bind("bracket", a => {
   }
 });
 
-/* ================= BETTING ================= */
-let BETS = {}; // id -> { side: 0|1|null, amt }
-const bailed = new Set();
-function renderBets(fresh) {
-  const cur = currentMatch(), A = P(cur.m.a), B = P(cur.m.b);
-  const watchers = T.players.filter(p => p.id !== A.id && p.id !== B.id);
-  if (fresh) {
-    BETS = {}; bailed.clear();
-    for (const w of watchers) { if (w.pts < MIN_STAKE) { w.pts = MIN_STAKE; bailed.add(w.id); } BETS[w.id] = { side: null, amt: MIN_STAKE }; }
-    saveT();
-  }
-  const pool = [0, 0];
-  for (const id in BETS) { const b = BETS[id]; if (b.side != null) pool[b.side] += b.amt; }
-  const total = pool[0] + pool[1];
-  const odds = s => pool[s] ? `×${(total / pool[s]).toFixed(2)}` : "—";
-  const amts = p => [10, 25, 50].filter(v => v < p.pts).concat([p.pts]);
-  $("#bets").innerHTML = `${header("Place your bets", "bracket", "Bracket")}
-    <section class="vsbig">
-      <div class="side red"><small>Bottom of phone</small><b>${esc(A.name)}</b><span>${pool[0]} pts · ${odds(0)}</span></div>
-      <div class="side blue"><small>Top of phone</small><b>${esc(B.name)}</b><span>${pool[1]} pts · ${odds(1)}</span></div>
-    </section>
-    <p class="note">Pass the phone around. Pick a side and a stake. Winners split the whole pot by stake, so backing the underdog pays more.</p>
-    <ul class="betlist">${watchers.map(w => { const b = BETS[w.id]; return `<li class="bet">
-      <div class="who"><b>${esc(w.name)}</b><span>${w.pts} pts${bailed.has(w.id) ? " · topped up" : ""}</span></div>
-      <div class="sides"><button class="sd red" data-a="side" data-id="${w.id}" data-s="0" aria-pressed="${b.side === 0}">${esc(A.name)}</button><button class="sd blue" data-a="side" data-id="${w.id}" data-s="1" aria-pressed="${b.side === 1}">${esc(B.name)}</button></div>
-      <div class="amts">${amts(w).map(v => `<button class="amt" data-a="amt" data-id="${w.id}" data-v="${v}" aria-pressed="${b.amt === v}" ${b.side == null ? "disabled" : ""}>${v === w.pts ? `All in ${v}` : v}</button>`).join("")}</div>
-    </li>`; }).join("")}</ul>
-    <button class="start" data-a="lock">${total ? `Lock ${total} pts in bets &amp; duel` : "Duel with no bets"}</button>`;
-  show("bets");
-}
-bind("bets", (a, b) => {
-  if (a === "bracket") return renderBracket();
-  if (a === "side") { const x = BETS[b.dataset.id], s = +b.dataset.s; x.side = x.side === s ? null : s; beep(520, 0.03); }
-  if (a === "amt") { BETS[b.dataset.id].amt = +b.dataset.v; beep(600, 0.03); }
-  if (a === "lock") {
-    lockBets(Object.entries(BETS).filter(([, x]) => x.side != null).map(([id, x]) => ({ id: +id, side: x.side, amt: Math.min(x.amt, P(+id).pts) })));
-    return runTournamentDuel();
-  }
-  renderBets(false);
-});
-function lockBets(bets) {
-  const cur = currentMatch();
-  for (const b of bets) P(b.id).pts -= b.amt; // stakes leave the wallet when locked
-  T.pending = { r: cur.r, i: cur.i, bets };
-  saveT();
-}
-
-/* ================= TOURNAMENT DUEL + PAYOUT ================= */
+/* ================= TOURNAMENT DUEL ================= */
+// Each duel is a run of mini-games. Before every game the watchers see which game it is and bet on it.
 function tourPool() {
   let ids = GAMES.filter(g => T.cats.includes(g.cat) && !CFG.off.includes(g.id)).map(g => g.id);
   if (!ids.length) ids = GAMES.map(g => g.id);
@@ -217,44 +174,132 @@ function bagNext(holder, poolIds) {
   const id = holder.bag.pop(); holder.last = id;
   return gameById(id);
 }
+const need = () => Math.ceil(T.bestOf / 2);
+const duelers = () => { const m = currentMatch().m; return [P(m.a), P(m.b)]; };
+function refund(bets) { for (const b of bets) P(b.id).pts += b.amt; }
+
 function runTournamentDuel() {
-  const cur = currentMatch(), A = P(cur.m.a), B = P(cur.m.b);
+  const pd = T.pending, [A, B] = duelers();
+  let carry = !!pd.gameId; // came back mid-duel: replay the game that was already revealed
   startDuel({
-    names: [A.name, B.name], need: Math.ceil(T.bestOf / 2),
-    next: () => { const g = bagNext(T, tourPool()); saveT(); return g; },
-    endActions: [{ label: "See payouts", act: "pay", primary: true }],
-    onAction: (act, w) => settle(w),
+    names: [A.name, B.name], need: need(), score: pd.score, round: carry ? pd.round - 1 : pd.round,
+    next: () => {
+      if (carry) { carry = false; return gameById(pd.gameId); }
+      if (pd.bets) { refund(pd.bets); pd.bets = null; } // game skipped from the pause menu
+      const g = bagNext(T, tourPool());
+      pd.gameId = g.id; pd.round++; saveT();
+      return g;
+    },
+    beforeGame: T.players.length > 2 ? (g, go) => pd.bets ? go() : renderBets(g, go) : null,
+    afterGame: w => afterGame(w),
+    endActions: [], onAction: () => {},
     onQuit: () => renderBracket()
   });
 }
-function settle(w) {
-  const cur = currentMatch(); if (!cur) return renderBracket();
-  const m = cur.m, winId = w === 0 ? m.a : m.b, loseId = w === 0 ? m.b : m.a;
-  const bets = (T.pending && T.pending.bets) || [];
+
+/* ---------- Betting (after the game is revealed) ---------- */
+let BETS = {}, BET_GO = null, BET_GAME = null;
+const bailed = new Set();
+function renderBets(g, go) {
+  BET_GO = go; BET_GAME = g; BETS = {}; bailed.clear();
+  const [A, B] = duelers();
+  for (const w of T.players) {
+    if (w.id === A.id || w.id === B.id) continue;
+    if (w.pts < MIN_STAKE) { w.pts = MIN_STAKE; bailed.add(w.id); }
+    BETS[w.id] = { side: null, amt: MIN_STAKE };
+  }
+  saveT(); drawBets(); show("bets");
+}
+function drawBets() {
+  const g = BET_GAME, pd = T.pending, [A, B] = duelers();
+  const watchers = T.players.filter(p => BETS[p.id]);
+  const pool = [0, 0];
+  for (const id in BETS) { const b = BETS[id]; if (b.side != null) pool[b.side] += b.amt; }
+  const total = pool[0] + pool[1];
+  const odds = s => pool[s] ? `×${(total / pool[s]).toFixed(2)}` : "—";
+  const amts = p => [10, 25, 50].filter(v => v < p.pts).concat([p.pts]);
+  $("#bets").innerHTML = `${header("Bet on this game", "bracket", "Bracket")}
+    <section class="gamecard">
+      <p class="eyebrow">Game ${pd.round} · ${CATS[g.cat]}</p>
+      <h3>${g.name}</h3>
+      <p>${g.rule}</p>
+      <p class="duelscore"><span class="red-t">${esc(A.name)} ${pd.score[0]}</span> – <span class="blue-t">${pd.score[1]} ${esc(B.name)}</span> · first to ${need()} wins the duel</p>
+    </section>
+    <section class="vsbig">
+      <div class="side red"><small>Bottom of phone</small><b>${esc(A.name)}</b><span>${pool[0]} pts · ${odds(0)}</span></div>
+      <div class="side blue"><small>Top of phone</small><b>${esc(B.name)}</b><span>${pool[1]} pts · ${odds(1)}</span></div>
+    </section>
+    <p class="note">Pass the phone around. Who wins this game? Winners split the whole pot by stake, so backing the underdog pays more. A tie refunds everyone.</p>
+    <ul class="betlist">${watchers.map(w => { const b = BETS[w.id]; return `<li class="bet">
+      <div class="who"><b>${esc(w.name)}</b><span>${w.pts} pts${bailed.has(w.id) ? " · topped up" : ""}</span></div>
+      <div class="sides"><button class="sd red" data-a="side" data-id="${w.id}" data-s="0" aria-pressed="${b.side === 0}">${esc(A.name)}</button><button class="sd blue" data-a="side" data-id="${w.id}" data-s="1" aria-pressed="${b.side === 1}">${esc(B.name)}</button></div>
+      <div class="amts">${amts(w).map(v => `<button class="amt" data-a="amt" data-id="${w.id}" data-v="${v}" aria-pressed="${b.amt === v}" ${b.side == null ? "disabled" : ""}>${v === w.pts ? `All in ${v}` : v}</button>`).join("")}</div>
+    </li>`; }).join("")}</ul>
+    <button class="start" data-a="lock">${total ? `Lock ${total} pts &amp; play` : "Play with no bets"}<small>Then hand the phone to ${esc(A.name)} and ${esc(B.name)}</small></button>`;
+}
+bind("bets", (a, b) => {
+  if (a === "bracket") return renderBracket();
+  if (a === "side") { const x = BETS[b.dataset.id], s = +b.dataset.s; x.side = x.side === s ? null : s; beep(520, 0.03); }
+  if (a === "amt") { BETS[b.dataset.id].amt = +b.dataset.v; beep(600, 0.03); }
+  if (a === "lock") {
+    const bets = Object.entries(BETS).filter(([, x]) => x.side != null).map(([id, x]) => ({ id: +id, side: x.side, amt: Math.min(x.amt, P(+id).pts) }));
+    for (const x of bets) P(x.id).pts -= x.amt; // stakes leave the wallet when locked
+    T.pending.bets = bets; saveT();
+    audio(); return BET_GO();
+  }
+  drawBets();
+});
+
+/* ---------- After each game: payouts, and the duel result when it's decided ---------- */
+function settleBets(bets, w) {
+  if (w == null) { refund(bets); return bets.map(b => ({ ...b, net: 0, refunded: true })); }
   const total = bets.reduce((s, b) => s + b.amt, 0), winPool = bets.filter(b => b.side === w).reduce((s, b) => s + b.amt, 0);
-  const results = bets.map(b => {
+  return bets.map(b => {
     const back = b.side === w ? Math.floor(b.amt * total / winPool) : 0;
     P(b.id).pts += back;
-    return { id: b.id, side: b.side, amt: b.amt, net: back - b.amt };
+    return { ...b, net: back - b.amt };
   });
-  P(winId).pts += WIN_BONUS;
-  m.w = winId; advance(T.rounds);
-  T.history.push({ r: cur.r, a: m.a, b: m.b, w: winId, score: D.score.slice(), results });
-  T.pending = null;
-  if (T.rounds[T.rounds.length - 1][0].w != null) { T.done = true; T.champ = T.rounds[T.rounds.length - 1][0].w; }
-  saveT();
-  renderPayout(winId, loseId, D.score[w], D.score[1 - w], results);
 }
-function renderPayout(winId, loseId, ws, ls, results) {
-  const sideName = s => esc(P(s === 0 ? T.history[T.history.length - 1].a : T.history[T.history.length - 1].b).name);
-  $("#payout").innerHTML = `<section class="hero"><p class="eyebrow">Duel result</p><h2 class="huge">${esc(P(winId).name)} wins</h2>
-      <p class="sub">${ws}–${ls} over ${esc(P(loseId).name)} · +${WIN_BONUS} points for the win</p></section>
-    <section><h3 class="label">Bets</h3>${results.length ? `<ul class="paylist">${results.sort((a, b) => b.net - a.net).map(r => `<li><span class="nm">${esc(P(r.id).name)}<small>${r.amt} on ${sideName(r.side)}</small></span><span class="delta ${r.net >= 0 ? "up" : "down"}">${r.net >= 0 ? "+" : "−"}${Math.abs(r.net)}</span><span class="pt">${P(r.id).pts}</span></li>`).join("")}</ul>` : `<p class="note">No bets on this one.</p>`}</section>
-    <section><h3 class="label">Points</h3>${leaderboard(winId)}</section>
-    <button class="start" data-a="next">${T.done ? "Crown the champion" : "Back to bracket"}</button>`;
+let PAY = null;
+function afterGame(w) {
+  const pd = T.pending, cur = currentMatch(), m = cur.m, [A, B] = duelers();
+  pd.score = D.score.slice();
+  const game = gameById(pd.gameId), results = settleBets(pd.bets || [], w);
+  pd.bets = null; pd.gameId = null;
+  const dw = [0, 1].find(p => pd.score[p] >= need());
+  PAY = { A, B, game, w, results, dw, round: pd.round, score: pd.score.slice() };
+  if (dw != null) {
+    const winId = dw === 0 ? m.a : m.b;
+    P(winId).pts += WIN_BONUS;
+    m.w = winId; advance(T.rounds);
+    T.history.push({ r: cur.r, a: m.a, b: m.b, w: winId, score: pd.score.slice() });
+    T.pending = null;
+    const fin = T.rounds[T.rounds.length - 1][0];
+    if (fin.w != null) { T.done = true; T.champ = fin.w; }
+  }
+  saveT();
+  if (dw == null && !results.length) return nextGame(); // nobody bet: straight on to the next game
+  renderPayout();
+}
+function renderPayout() {
+  const { A, B, game, w, results, dw, round, score } = PAY;
+  const nm = s => esc((s === 0 ? A : B).name);
+  const line = `<span class="red-t">${esc(A.name)} ${score[0]}</span> – <span class="blue-t">${score[1]} ${esc(B.name)}</span>`;
+  const hero = dw != null
+    ? `<p class="eyebrow">Duel over</p><h2 class="huge">${nm(dw)} wins the duel</h2><p class="sub">${line} · +${WIN_BONUS} points for the win</p>`
+    : `<p class="eyebrow">Game ${round} · ${game.name}</p><h2 class="huge">${w == null ? "Tie game" : `${nm(w)} takes it`}</h2><p class="sub">${line} · first to ${need()}${w == null ? " · bets refunded" : ""}</p>`;
+  const list = results.length
+    ? `<ul class="paylist">${results.slice().sort((a, b) => b.net - a.net).map(r => `<li><span class="nm">${esc(P(r.id).name)}<small>${r.amt} on ${nm(r.side)}${r.refunded ? " · refunded" : ""}</small></span><span class="delta ${r.net > 0 ? "up" : r.net < 0 ? "down" : ""}">${r.net > 0 ? "+" : r.net < 0 ? "−" : "±"}${Math.abs(r.net)}</span><span class="pt">${P(r.id).pts}</span></li>`).join("")}</ul>`
+    : `<p class="note">No bets on this game.</p>`;
+  const btn = dw == null
+    ? `<button class="start" data-a="nextgame">Reveal the next game</button>`
+    : `<button class="start" data-a="${T.done ? "final" : "bracket"}">${T.done ? "Crown the champion" : "Back to bracket"}</button>`;
+  $("#payout").innerHTML = `<section class="hero">${hero}</section>
+    <section><h3 class="label">Bets on ${esc(game.name)}</h3>${list}</section>
+    <section><h3 class="label">Points</h3>${leaderboard()}</section>${btn}`;
   show("payout");
 }
-bind("payout", () => T.done ? renderFinal() : renderBracket());
+bind("payout", a => a === "nextgame" ? runTournamentDuel() : a === "final" ? renderFinal() : renderBracket());
 
 function renderFinal() {
   const champ = P(T.champ), top = T.players.slice().sort((a, b) => b.pts - a.pts)[0];
