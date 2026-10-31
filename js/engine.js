@@ -284,7 +284,8 @@ function showChallenge() {
   const prompt = g.prompts ? pick(g.prompts) : null;
   let secrets = null;
   if (g.secrets) { const s = shuffle(g.secrets); secrets = [s[0], s[1]]; }
-  D.chal = { t: g.timer && g.timer.down ? g.timer.down : 0, run: false, iv: null, last: 0, secrets };
+  D.chal = { t: g.timer && g.timer.down ? g.timer.down : 0, run: false, iv: null, last: 0, secrets, tally: [0, 0] };
+  const tally = g.tally ? `<div class="tally">${[0, 1].map(p => `<div class="tl ${p ? "blue" : "red"}"><span class="tn">${name(p)}</span><b id="tally${p}">0</b><div class="tb"><button class="tminus" data-c="m${p}" aria-label="Take a point from ${name(p)}">−</button><button class="tplus" data-c="p${p}">+1</button></div></div>`).join("")}</div>${g.tally.to ? `<p class="hint">First to ${g.tally.to} wins automatically.</p>` : ""}` : "";
   const timer = g.timer ? `<div class="ctimer"><div class="tval" id="tval">${fmtTime(D.chal.t)}</div><div class="trow"><button class="btn" data-c="go">Start</button><button class="btn ghost" data-c="reset">Reset</button></div></div>` : "";
   const sec = secrets ? `<div class="peeks">${[0, 1].map(p => `<button class="peek ${p ? "blue" : "red"}" data-peek="${p}"><span class="pk-label">${name(p)}: hold to see your secret</span><span class="pk-secret" hidden>${esc(secrets[p])}</span></button>`).join("")}</div><p class="hint">Everyone else, look away while they peek.</p>` : "";
   $("#chal").innerHTML = `<div class="cwrap">
@@ -293,7 +294,7 @@ function showChallenge() {
     <p class="cvs"><span class="red-t">${name(0)}</span> vs <span class="blue-t">${name(1)}</span></p>
     <p class="crule">${g.rule}</p>
     ${prompt ? `<div class="cprompt">${esc(prompt)}</div>` : ""}
-    ${sec}${timer}
+    ${sec}${tally}${timer}
     <h3 class="label">Who won?</h3>
     <div class="who"><button class="jb red" data-c="w0">${name(0)}</button><button class="jb blue" data-c="w1">${name(1)}</button></div>
     <button class="btn ghost" data-c="tie">Call it a tie</button>
@@ -318,6 +319,16 @@ $("#chal").addEventListener("click", e => {
     const go = $('#chal [data-c="go"]'); if (go) go.textContent = "Start";
   } else if (a === "pause") {
     stopAll(); D.phase = "paused"; $("#pause").hidden = false;
+  } else if (/^[pm][01]$/.test(a)) {
+    const p = +a[1], el = $(`#tally${p}`);
+    c.tally[p] = Math.max(0, c.tally[p] + (a[0] === "p" ? 1 : -1));
+    el.textContent = c.tally[p]; replay(el, "bump");
+    if (a[0] === "p") beep(700 + c.tally[p] * 80, 0.06);
+    const to = D.game.tally.to;
+    if (to && c.tally[p] >= to) {
+      D.phase = "decided";
+      setTimeout(() => { if (D.phase !== "decided") return; $("#chal").hidden = true; D.phase = "play"; finish(D.R, p, { win: `${c.tally[p]}–${c.tally[1 - p]}.`, lose: `${c.tally[1 - p]}–${c.tally[p]}. ${name(p)} takes it.` }); }, 650);
+    }
   } else if (a === "w0" || a === "w1" || a === "tie") {
     stopChalTimer(); $("#chal").hidden = true; D.phase = "play";
     const R = D.R;

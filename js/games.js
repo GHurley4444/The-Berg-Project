@@ -212,9 +212,9 @@ const GAMES = [
     });
   } },
 
-{ id: "mole", cat: "speed", name: "Whack-a-Mole", rule: "Moles pop out of the holes. Whack them for a point. Hit a bomb and lose two. First to 10.",
+{ id: "mole", cat: "speed", name: "Whack-a-Mole", rule: "Moles pop out of the holes. Whack them for a point. Hit a bomb and lose two. First to 6.",
   start(R) {
-    const sc = race(R, 10);
+    const sc = race(R, 6);
     R.both(`<div class="holes">${[...Array(9)].map((_, i) => `<button class="hole" tabindex="-1" data-h="${i}"></button>`).join("")}</div>`);
     let ms = 800;
     const spawn = () => {
@@ -235,9 +235,9 @@ const GAMES = [
     });
   } },
 
-{ id: "mathrace", cat: "speed", name: "Math Race", rule: "Solve the sum and tap the right answer first. Wrong answers cost a point. First to 5.",
+{ id: "mathrace", cat: "speed", name: "Math Race", rule: "Solve the sum and tap the right answer first. Wrong answers cost a point. First to 3.",
   start(R) {
-    quiz(R, { n: 5, penalty: true, next() {
+    quiz(R, { n: 3, penalty: true, next() {
       const op = pick(["+", "−", "×"]);
       let a = ri(4, 25), b = ri(2, 19);
       if (op === "×") { a = ri(2, 12); b = ri(2, 9); }
@@ -250,10 +250,10 @@ const GAMES = [
   } },
 
 /* ================= MEMORY ================= */
-{ id: "simon", cat: "memory", name: "Copy the Pattern", rule: "Watch the pads light up, then repeat the pattern on your side. It gets longer until someone slips.",
+{ id: "simon", cat: "memory", name: "Copy the Pattern", rule: "Watch the pads light up, then repeat the pattern on your side. It gets longer fast until someone slips.",
   start(R) {
     const TONES = [330, 415, 494, 587];
-    let len = 3, seq = [], phase = "show", pos = [0, 0], out = [false, false], done = [false, false];
+    let len = 4, seq = [], phase = "show", pos = [0, 0], out = [false, false], done = [false, false];
     const pads = `<div class="pads">${[0, 1, 2, 3].map(i => `<button class="pad c${i}" tabindex="-1" data-pad="${i}"></button>`).join("")}</div>`;
     const light = (i, ps) => {
       for (const q of ps) { const el = R.q(q, `[data-pad="${i}"]`); if (el) { el.classList.add("lit"); setTimeout(() => el.classList.remove("lit"), 300); } }
@@ -274,7 +274,7 @@ const GAMES = [
       if (!((out[0] || done[0]) && (out[1] || done[1]))) return;
       if (done[0] && !done[1]) return R.win(0, { win: `You lasted longer.`, lose: "You slipped up." });
       if (done[1] && !done[0]) return R.win(1, { win: `You lasted longer.`, lose: "You slipped up." });
-      if (done[0] && done[1]) len++;
+      if (done[0] && done[1]) len += 2;
       R.after(900, round);
     };
     R.onDown((p, e) => {
@@ -387,24 +387,24 @@ const GAMES = [
   } },
 
 /* ================= GUESSING ================= */
-{ id: "closest", cat: "guess", name: "Closest Guess", rule: "Answer a number question. Closest guess scores a point. First to 2.",
+{ id: "closest", cat: "guess", name: "Closest Guess", rule: "Answer a number question. Closest guess wins.",
   start(R) {
     const qs = shuffle(NUM_QUESTIONS); let i = 0;
-    guessGame(R, { n: 2, next: () => { const q = qs[i++ % qs.length]; return { q: q.q, a: q.a }; } });
+    guessGame(R, { n: 1, next: () => { const q = qs[i++ % qs.length]; return { q: q.q, a: q.a }; } });
   } },
 
-{ id: "dots", cat: "guess", name: "Dot Count", rule: "A cloud of dots flashes for a moment. Guess how many there were. Closest wins the point. First to 2.",
+{ id: "dots", cat: "guess", name: "Dot Count", rule: "A cloud of dots flashes for a moment. Guess how many there were. Closest guess wins.",
   start(R) {
-    guessGame(R, { n: 2, next: () => {
+    guessGame(R, { n: 1, next: () => {
       const n = ri(14, 45);
       const dots = [...Array(n)].map(() => `<i style="left:${rand(3, 95)}%;top:${rand(4, 92)}%"></i>`).join("");
       return { q: "How many dots?", a: n, max: 3, intro: go => { R.both(`<div class="dots">${dots}</div>`); R.after(1400, go); } };
     } });
   } },
 
-{ id: "fill", cat: "guess", name: "How Full?", rule: "A glass flashes up partly full. Guess how full it was, from 0 to 100%. Closest wins. First to 2.",
+{ id: "fill", cat: "guess", name: "How Full?", rule: "A glass flashes up partly full. Guess how full it was, from 0 to 100%. Closest guess wins.",
   start(R) {
-    guessGame(R, { n: 2, next: () => {
+    guessGame(R, { n: 1, next: () => {
       const v = ri(4, 96);
       return { q: "How full was it? (0–100%)", a: v, unit: "%", max: 3, intro: go => { R.both(`<div class="glass"><i style="height:${v}%"></i></div>`); R.after(1500, go); } };
     } });
@@ -440,9 +440,9 @@ const GAMES = [
     });
   } },
 
-{ id: "hilo", cat: "guess", name: "Higher or Lower", rule: "Guess in secret whether the next card is higher or lower. Every right call scores. First to 3.",
+{ id: "hilo", cat: "guess", name: "Higher or Lower", rule: "Guess in secret whether the next card is higher or lower. Every right call scores. First to 2.",
   start(R) {
-    const sc = race(R, 3);
+    const sc = race(R, 2);
     let card = ri(3, 11), picks;
     const round = () => {
       picks = [null, null];
@@ -463,10 +463,10 @@ const GAMES = [
     round();
   } },
 
-{ id: "emoji", cat: "guess", name: "Emoji Movie", rule: "Name the movie from the emoji. First right answer scores. First to 3.",
+{ id: "emoji", cat: "guess", name: "Emoji Movie", rule: "Name the movie from the emoji. First right answer scores. First to 2.",
   start(R) {
     const bank = shuffle(EMOJI_MOVIES); let i = 0;
-    quiz(R, { n: 3, next() {
+    quiz(R, { n: 2, next() {
       const [e, t] = bank[i++ % bank.length];
       const m = mc(t, shuffle(EMOJI_MOVIES.filter(x => x[1] !== t)).slice(0, 3).map(x => x[1]));
       return { prompt: `<div class="card emoji wide">${e}</div>`, opts: m.opts, ans: m.ans, cls: "text" };
@@ -474,32 +474,11 @@ const GAMES = [
   } },
 
 /* ================= BLUFF & MIND GAMES ================= */
-{ id: "rps", cat: "bluff", name: "Rock Paper Scissors", rule: "Pick in secret, cover your screen, then reveal. First to 3 wins. Read your opponent.",
-  start(R) {
-    const L = ["✊", "✋", "✌️"], N = ["Rock", "Paper", "Scissors"];
-    secretPick(R, { n: 3, ask: "Pick your throw", labels: L.map((l, i) => `${l}<small>${N[i]}</small>`), cls: "three",
-      show: i => L[i],
-      resolve(a, b) { const d = (a - b + 3) % 3; return d === 0 ? null : d === 1 ? 0 : 1; } });
-  } },
+{ id: "rps", cat: "bluff", irl: true, name: "Rock Paper Scissors", rule: "Real hands. Together, say \"rock, paper, scissors, shoot!\" and throw. Tap a player's +1 when they win a throw. First to 2.", tally: { to: 2 } },
 
-{ id: "oddeven", cat: "bluff", name: "Odds & Evens", rule: "One of you is Odds, the other Evens. Both secretly throw 1 or 2. If the total is odd, Odds scores. First to 3.",
-  start(R) {
-    const odds = Math.random() < 0.5 ? 0 : 1;
-    const role = p => p === odds ? "ODDS" : "EVENS";
-    R.mini(p => `You are <b>${role(p)}</b>`);
-    secretPick(R, { n: 3, ask: "Throw 1 or 2", labels: ["1", "2"], top: p => `<p class="eyebrow">You are ${role(p)}</p>`,
-      show: i => String(i + 1),
-      resolve(a, b) { return (a + b + 2) % 2 === 1 ? odds : 1 - odds; },
-      note(pk) { const s = pk[0] + pk[1] + 2; return `Total ${s}: ${s % 2 ? "odd" : "even"}.`; } });
-  } },
+{ id: "oddeven", cat: "bluff", irl: true, name: "Odds & Evens", rule: "Decide who's Odds and who's Evens. On three, both throw out 1 or 2 fingers. If the total is odd, Odds scores; even, Evens scores. First to 3.", tally: { to: 3 } },
 
-{ id: "undercut", cat: "bluff", name: "Undercut", rule: "Secretly pick 1 to 5. Higher number wins, unless the other player picked exactly one less. Then they undercut you. First to 3.",
-  start(R) {
-    secretPick(R, { n: 3, ask: "Pick a number", labels: ["1", "2", "3", "4", "5"], cls: "five",
-      show: i => String(i + 1),
-      resolve(a, b) { if (a === b) return null; if (a - b === 1) return 1; if (b - a === 1) return 0; return a > b ? 0 : 1; },
-      note(pk) { const [a, b] = pk; return Math.abs(a - b) === 1 ? "Undercut!" : a === b ? "Same number." : "Higher number wins."; } });
-  } },
+{ id: "undercut", cat: "bluff", irl: true, name: "Undercut", rule: "On three, both throw out 1 to 5 fingers. Higher number scores, unless the other player threw exactly one less: then they undercut you and score. Same number: throw again. First to 3.", tally: { to: 3 } },
 
 { id: "bid", cat: "bluff", name: "Sealed Bid", rule: "You each have 10 chips. Secretly bid for 3 prizes. Highest bid takes the prize. Chips you bid are gone. Win 2 prizes.",
   start(R) {
@@ -601,19 +580,19 @@ const GAMES = [
       foul: p => ({ win: `${name(p)} fell for a false one.`, lose: "That sum was false!" }) });
   } },
 
-{ id: "trivia", cat: "brain", name: "Trivia Showdown", rule: "Quick-fire questions. First right answer scores. A wrong answer locks you out of that question. First to 3.",
+{ id: "trivia", cat: "brain", name: "Trivia Showdown", rule: "Quick-fire questions. First right answer scores. A wrong answer locks you out of that question. First to 2.",
   start(R) {
     const bank = shuffle(TRIVIA); let i = 0;
-    quiz(R, { n: 3, next() {
+    quiz(R, { n: 2, next() {
       const [q, ...o] = bank[i++ % bank.length]; const m = mc(o[0], o.slice(1));
       return { prompt: `<p class="qtext">${q}</p>`, opts: m.opts, ans: m.ans, cls: "text" };
     } });
   } },
 
-{ id: "scramble", cat: "brain", name: "Scramble", rule: "Unscramble the word and tap the right answer first. First to 3.",
+{ id: "scramble", cat: "brain", name: "Scramble", rule: "Unscramble the word and tap the right answer first. First to 2.",
   start(R) {
     const bank = shuffle(SCRAMBLE); let i = 0;
-    quiz(R, { n: 3, next() {
+    quiz(R, { n: 2, next() {
       const w = bank[i++ % bank.length];
       let s = w; while (s === w) s = shuffle(w.split("")).join("");
       const m = mc(w, shuffle(SCRAMBLE.filter(x => x !== w && x.length === w.length).concat(SCRAMBLE.filter(x => x !== w))).filter((x, k, a) => a.indexOf(x) === k).slice(0, 3));
@@ -621,9 +600,9 @@ const GAMES = [
     } });
   } },
 
-{ id: "pattern", cat: "brain", name: "Next in Line", rule: "Spot the pattern and tap the number that comes next. First to 3.",
+{ id: "pattern", cat: "brain", name: "Next in Line", rule: "Spot the pattern and tap the number that comes next. First to 2.",
   start(R) {
-    quiz(R, { n: 3, next() {
+    quiz(R, { n: 2, next() {
       const kind = ri(0, 4); let s;
       if (kind === 0) { const a = ri(1, 20), d = ri(2, 9); s = [0, 1, 2, 3, 4].map(k => a + k * d); }
       else if (kind === 1) { const a = ri(1, 4), r = pick([2, 3]); s = [0, 1, 2, 3, 4].map(k => a * r ** k); }
@@ -637,10 +616,10 @@ const GAMES = [
     } });
   } },
 
-{ id: "bigger", cat: "brain", name: "Which Is Bigger?", rule: "Two sums appear. Tap the bigger one. Wrong taps cost a point. First to 5.",
+{ id: "bigger", cat: "brain", name: "Which Is Bigger?", rule: "Two sums appear. Tap the bigger one. Wrong taps cost a point. First to 3.",
   start(R) {
     const expr = () => { const k = ri(0, 2); if (k === 0) { const a = ri(3, 12), b = ri(3, 12); return { t: `${a} × ${b}`, v: a * b }; } if (k === 1) { const a = ri(10, 80), b = ri(10, 80); return { t: `${a} + ${b}`, v: a + b }; } const a = ri(40, 120); return { t: String(a), v: a }; };
-    quiz(R, { n: 5, penalty: true, next() {
+    quiz(R, { n: 3, penalty: true, next() {
       let a = expr(), b = expr(); while (Math.abs(a.v - b.v) < 1 || Math.abs(a.v - b.v) > 25) { a = expr(); b = expr(); }
       return { prompt: `<p class="hint">Tap the bigger one</p>`, opts: [a.t, b.t], ans: a.v > b.v ? 0 : 1, cls: "two" };
     } });
@@ -691,14 +670,14 @@ const GAMES = [
 
 /* ================= REAL-LIFE CHALLENGES (crowd judges) ================= */
 { id: "stare", cat: "irl", irl: true, name: "Staring Contest", rule: "Lock eyes. First to blink, look away or laugh loses. The crowd watches closely.", timer: { up: true } },
-{ id: "thumb", cat: "irl", irl: true, name: "Thumb War", rule: "Lock fingers, thumbs up. \"One, two, three, four, I declare a thumb war.\" Pin their thumb for a three-count. Best of 3." },
+{ id: "thumb", cat: "irl", irl: true, name: "Thumb War", rule: "Lock fingers, thumbs up. \"One, two, three, four, I declare a thumb war.\" Pin their thumb for a three-count. First to 2 pins.", tally: { to: 2 } },
 { id: "poker", cat: "irl", irl: true, name: "Poker Face", rule: "Take turns: 30 seconds each to make your opponent laugh or smile. No touching. Whoever cracks first loses. If nobody cracks, the crowd decides.", timer: { down: 30 } },
 { id: "twister", cat: "irl", irl: true, name: "Tongue Twister", rule: "Each of you says this three times, fast. Cleanest and quickest wins. The crowd decides.", prompts: TWISTERS },
 { id: "flamingo", cat: "irl", irl: true, name: "Flamingo", rule: "Stand on one leg, arms crossed, eyes closed. First to put a foot down or open their eyes loses.", timer: { up: true } },
 { id: "wallsit", cat: "irl", irl: true, name: "Wall Sit", rule: "Backs flat against a wall, knees bent at 90 degrees. First to stand up or slide down loses.", timer: { up: true } },
 { id: "arm", cat: "irl", irl: true, name: "Arm Wrestle", rule: "Elbows on the table, hands locked. The ref says go. First to pin the other's hand wins." },
-{ id: "toss", cat: "irl", irl: true, name: "Paper Toss", rule: "Crumple a napkin or paper. Take turns tossing it into a cup or bin from three big steps away. Five shots each. Most baskets wins." },
-{ id: "slap", cat: "irl", irl: true, name: "Hand Slap", rule: "One player holds hands palms up; the other rests theirs palms down on top. The bottom player tries to slap; the top player dodges. Swap after a miss. First to 3 slaps." },
+{ id: "toss", cat: "irl", irl: true, name: "Paper Toss", rule: "Crumple a napkin or paper. Take turns tossing it into a cup or bin from three big steps away. Five shots each. Tap +1 for every basket. Most baskets wins.", tally: {} },
+{ id: "slap", cat: "irl", irl: true, name: "Hand Slap", rule: "One player holds hands palms up; the other rests theirs palms down on top. The bottom player tries to slap; the top player dodges. Swap after a miss. First to 3 slaps.", tally: { to: 3 } },
 { id: "impress", cat: "irl", irl: true, name: "Impressions", rule: "Each of you does this impression for 15 seconds. The crowd picks the best one.", prompts: IMPRESSIONS, timer: { down: 15 } },
 { id: "hum", cat: "irl", irl: true, name: "Hum That Tune", rule: "Each player peeks at a secret song, then hums it. Whoever gets their song guessed by the crowd first wins.", secrets: SONGS },
 { id: "speech", cat: "irl", irl: true, name: "No-Um Speech", rule: "30 seconds each on this topic. Say \"um\" or \"uh\", or pause too long, and you're out. If you both survive, best speech wins.", prompts: TOPICS, timer: { down: 30 } }

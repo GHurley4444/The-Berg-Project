@@ -9,6 +9,13 @@ const STORE = {
 };
 const CFG = Object.assign({ off: [], sound: true, quickNames: ["Red", "Blue"], quickNeed: 3, players: [], bestOf: 3, cats: Object.keys(CATS) }, STORE.get("pg.cfg", {}));
 let T = STORE.get("pg.tour", null);
+// The best party games: loud, quick, easy to watch, and worth betting on. Switched on by default.
+const PARTY_MIX = ["draw", "letgo", "color", "snap", "traffic", "pong", "odd", "tug", "targets", "balloon", "mole", "simon",
+  "clock", "closest", "emoji", "bust", "rps", "trivia", "categories", "rhyme", "chain", "sketch",
+  "stare", "thumb", "poker", "twister", "flamingo", "arm", "toss", "slap", "impress", "hum", "speech"];
+const mixOff = () => GAMES.filter(g => !PARTY_MIX.includes(g.id)).map(g => g.id);
+const isMix = () => { const off = mixOff(); return off.length === CFG.off.length && off.every(id => CFG.off.includes(id)); };
+if (!CFG.mix) { CFG.off = mixOff(); CFG.mix = 1; STORE.set("pg.cfg", CFG); }
 const saveCfg = () => STORE.set("pg.cfg", CFG);
 const saveT = () => T ? STORE.set("pg.tour", T) : STORE.del("pg.tour");
 SOUND.on = CFG.sound;
@@ -93,7 +100,7 @@ function renderSetup(keep) {
     </section>
     <section>
       <h3 class="label">Game types <small>${pool} games in the mix</small></h3>
-      <div class="chips">${Object.entries(CATS).map(([k, v]) => `<button class="chip" data-a="cat" data-v="${k}" aria-pressed="${SP.cats.includes(k)}">${v} <small>${GAMES.filter(g => g.cat === k).length}</small></button>`).join("")}</div>
+      <div class="chips">${Object.entries(CATS).map(([k, v]) => `<button class="chip" data-a="cat" data-v="${k}" aria-pressed="${SP.cats.includes(k)}">${v} <small>${GAMES.filter(g => g.cat === k && !CFG.off.includes(g.id)).length}</small></button>`).join("")}</div>
     </section>
     <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Winning a duel earns ${WIN_BONUS} points.</p>
     <button class="start" data-a="go" ${n < 2 || !pool ? "disabled" : ""}>${n < 2 ? "Add at least 2 players" : !pool ? "Pick a game type" : `Start with ${n} players`}</button>`;
@@ -413,14 +420,19 @@ bind("quick", (a, b) => {
 
 /* ================= GAME LIBRARY ================= */
 function renderLibrary() {
-  const on = GAMES.length - CFG.off.length;
+  const mix = isMix(), all = CFG.off.length === 0;
   $("#library").innerHTML = `${header("Game library")}
-    <p class="note">${on} of ${GAMES.length} games are on. Switched-off games never come up. Tap Try to play one right now.</p>
+    <div class="seg presets"><button data-a="preset" data-v="mix" role="radio" aria-checked="${mix}">Party Mix · ${PARTY_MIX.length}</button><button data-a="preset" data-v="all" role="radio" aria-checked="${all}">All · ${GAMES.length}</button></div>
+    <p class="note" id="libNote">${libNote()}</p>
     ${Object.entries(CATS).map(([k, v]) => `<section><h3 class="label">${v}</h3><ul class="glist">${GAMES.filter(g => g.cat === k).map(g => `<li>
-      <div class="gtxt"><b>${g.name}</b><span>${g.rule}</span></div>
+      <div class="gtxt"><b>${g.name}${PARTY_MIX.includes(g.id) ? ' <em class="tag">Party Mix</em>' : ""}${g.irl ? ' <em class="tag irl">Real life</em>' : ""}</b><span>${g.rule}</span></div>
       <div class="gact"><button class="sw" data-a="toggle" data-id="${g.id}" aria-pressed="${!CFG.off.includes(g.id)}" aria-label="${g.name} on or off"><i></i></button><button class="btn small" data-a="try" data-id="${g.id}">Try</button></div>
     </li>`).join("")}</ul></section>`).join("")}`;
   show("library");
+}
+function libNote() {
+  const on = GAMES.length - CFG.off.length;
+  return `${on} of ${GAMES.length} games are on${isMix() ? ": the Party Mix, picked for being quick, loud and easy to watch" : ""}. Switched-off games never come up. Tap Try to play one now.`;
 }
 function tryGame(g) {
   startDuel({
@@ -436,9 +448,16 @@ bind("library", (a, b) => {
   if (a === "toggle") {
     CFG.off = CFG.off.includes(id) ? CFG.off.filter(x => x !== id) : [...CFG.off, id]; saveCfg();
     b.setAttribute("aria-pressed", String(!CFG.off.includes(id)));
-    $("#library .note").textContent = `${GAMES.length - CFG.off.length} of ${GAMES.length} games are on. Switched-off games never come up. Tap Try to play one right now.`;
+    $("#libNote").textContent = libNote();
+    $$("#library [data-a=preset]").forEach(x => x.setAttribute("aria-checked", String(x.dataset.v === "mix" ? isMix() : CFG.off.length === 0)));
   }
   if (a === "try") { audio(); tryGame(gameById(id)); }
+  if (a === "preset") {
+    CFG.off = b.dataset.v === "mix" ? mixOff() : []; saveCfg(); beep(600, 0.04);
+    $$("#library .sw").forEach(sw => sw.setAttribute("aria-pressed", String(!CFG.off.includes(sw.dataset.id))));
+    $$("#library [data-a=preset]").forEach(x => x.setAttribute("aria-checked", String(x.dataset.v === "mix" ? isMix() : CFG.off.length === 0)));
+    $("#libNote").textContent = libNote();
+  }
 });
 
 renderHome();
