@@ -14,6 +14,42 @@ const big = (t, c = "") => `<div class="big ${c}">${t}</div>`;
 const choices = (opts, cls = "") => `<div class="choices ${cls}">${opts.map((o, i) => `<button class="ch" data-c="${i}">${o}</button>`).join("")}</div>`;
 function mc(right, wrongs) { const opts = shuffle([right, ...wrongs.slice(0, 3)]); return { opts, ans: opts.indexOf(right) }; }
 
+/* ---------- Motion helpers ---------- */
+const REDUCED = (() => { try { return matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) { return false; } })();
+// Count a number up (or down) inside an element, easing out.
+function countUp(el, from, to, ms = 700, fmt = v => String(v)) {
+  if (!el) return;
+  if (REDUCED || from === to) { el.textContent = fmt(to); return; }
+  const t0 = performance.now();
+  const tick = () => {
+    const k = Math.min(1, (performance.now() - t0) / ms), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(Math.round(from + (to - from) * e));
+    if (k < 1) requestAnimationFrame(tick);
+  };
+  tick();
+}
+// A short confetti burst from the bottom middle of an element.
+function confetti(host, n = 28, spread = 1) {
+  if (REDUCED || !host) return;
+  const box = document.createElement("div"); box.className = "confetti";
+  const colors = ["#FFC83D", "#FFF8EE", "#3DD68C", "#FF8A7A", "#8FB0FF"];
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement("i");
+    c.style.left = `${50 + rand(-18, 18) * spread}%`;
+    c.style.background = pick(colors);
+    c.style.setProperty("--x", `${rand(-170, 170) * spread}px`);
+    c.style.setProperty("--y", `${rand(-300, -110)}px`);
+    c.style.setProperty("--r", `${rand(-600, 600)}deg`);
+    c.style.animationDelay = `${rand(0, 140)}ms`;
+    if (Math.random() < 0.4) c.style.borderRadius = "50%";
+    box.appendChild(c);
+  }
+  host.appendChild(box);
+  setTimeout(() => box.remove(), 1900);
+}
+// Replay a one-off CSS animation class.
+function replay(el, cls) { if (!el) return; el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
 /* ---------- Sound, buzz, screen wake ---------- */
 const SOUND = { on: true };
 let AC = null;
@@ -83,7 +119,7 @@ function onDown(p, e) {
   if (now() < D.lockUntil) return;
   if (D.phase === "intro") {
     if (D.ready[p]) return;
-    D.ready[p] = true; beep(520, 0.06); renderIntro(p);
+    D.ready[p] = true; beep(520, 0.06); markReady(p);
     if (D.ready[0] && D.ready[1]) getSet();
   } else if (D.phase === "play") {
     D.R && D.R.down && D.R.down(p, e);
@@ -133,8 +169,10 @@ function startDuel(cfg) {
   showGameScreen(); nextGame();
 }
 function showGameScreen() {
+  const g = $("#game"), was = g.hidden;
   $$(".screen").forEach(s => { s.hidden = true; });
-  $("#pause").hidden = true; $("#game").hidden = false;
+  $("#pause").hidden = true; g.hidden = false;
+  if (was) { replay(g, "enter"); clearTimeout(g._t); g._t = setTimeout(() => g.classList.remove("enter"), 700); }
   keepAwake();
 }
 function nextGame() {
@@ -143,9 +181,10 @@ function nextGame() {
   D.phase = "betting"; $("#game").hidden = true;
   D.cfg.beforeGame(D.game, () => { showGameScreen(); intro(); });
 }
-function renderStatus() {
+function renderStatus(bump) {
   const goal = D.cfg.need === 1 ? "one game" : `first to ${D.cfg.need}`;
-  for (const p of [0, 1]) statusEl[p].innerHTML = `<span class="me">${name(p)}<b>${D.score[p]}</b></span><span class="goal">${goal}</span><span class="them"><b>${D.score[1 - p]}</b>${name(1 - p)}</span>`;
+  const b = q => q === bump ? ' class="bump"' : "";
+  for (const p of [0, 1]) statusEl[p].innerHTML = `<span class="me">${name(p)}<b${b(p)}>${D.score[p]}</b></span><span class="goal">${goal}</span><span class="them"><b${b(1 - p)}>${D.score[1 - p]}</b>${name(1 - p)}</span>`;
 }
 
 function intro() {
@@ -160,11 +199,15 @@ function intro() {
 }
 function renderIntro(p) {
   const g = D.game, r = D.ready[p];
-  stage[p].innerHTML = `<p class="eyebrow">Game ${D.round} · ${CATS[g.cat]}</p><h2 class="gname">${g.name}</h2><p class="rule">${g.rule}</p><div class="ready ${r ? "done" : ""}">${r ? `Waiting for ${name(1 - p)}…` : "Tap when ready"}</div>`;
+  stage[p].innerHTML = `<div class="introcard"><p class="eyebrow">Game ${D.round} · ${CATS[g.cat]}</p><h2 class="gname">${g.name}</h2><p class="rule">${g.rule}</p><div class="ready ${r ? "done" : ""}">${r ? `Waiting for ${name(1 - p)}…` : "Tap when ready"}</div></div>`;
+}
+function markReady(p) {
+  const r = stage[p].querySelector(".ready"); if (!r) return renderIntro(p);
+  r.classList.add("done"); r.textContent = `Waiting for ${name(1 - p)}…`;
 }
 function getSet() {
   D.phase = "getset";
-  for (const p of [0, 1]) stage[p].innerHTML = big("Get set…", "muted");
+  for (const p of [0, 1]) stage[p].innerHTML = big("Get set…", "muted getset");
   later(800, () => {
     D.phase = "play"; D.R = newRound(D.game);
     try { D.game.start(D.R); } catch (err) { console.error(err); D.R.draw({ draw: "That game hit a snag. Skipping it." }); }
@@ -175,14 +218,14 @@ function finish(R, w, m = {}) {
   if (R.dead) return;
   R.kill(); D.R = null; D.phase = "result";
   if (w != null) D.score[w]++;
-  renderStatus();
+  renderStatus(w);
   const win = m.win || "Point to you.", lose = m.lose || (w != null ? `${name(w)} takes it.` : "");
   for (const p of [0, 1]) {
-    if (w == null) stage[p].innerHTML = `<p class="eyebrow">${R.g.name}</p>${big("Tie")}<p class="rule">${m.draw || "Nobody scores."}</p>`;
-    else if (p === w) stage[p].innerHTML = `<p class="eyebrow">${R.g.name}</p>${big("Point!", "go")}<p class="rule">${win}</p>`;
-    else stage[p].innerHTML = `<p class="eyebrow">${R.g.name}</p>${big("Nope", "muted")}<p class="rule">${lose}</p>`;
+    if (w == null) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Tie", "tie")}<p class="rule">${m.draw || "Nobody scores."}</p></div>`;
+    else if (p === w) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Point!", "go win")}<p class="rule">${win}</p></div>`;
+    else stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Nope", "muted lose")}<p class="rule">${lose}</p></div>`;
   }
-  if (w != null) { halves[w].classList.remove("flash"); void halves[w].offsetWidth; halves[w].classList.add("flash"); beep(784, 0.1); setTimeout(() => beep(1046, 0.14), 100); buzz(50); }
+  if (w != null) { replay(halves[w], "flash"); confetti(halves[w].querySelector(".face"), 26); beep(784, 0.1); setTimeout(() => beep(1046, 0.14), 100); buzz(50); }
   else beep(440, 0.12, "triangle");
   later(2300, () => D.cfg.afterGame ? D.cfg.afterGame(w) : (w != null && D.score[w] >= D.cfg.need) ? duelOver(w) : nextGame());
 }
@@ -192,9 +235,10 @@ function duelOver(w) {
   miniEl.forEach(m => { m.innerHTML = ""; });
   const l = 1 - w, line = `${D.score[w]} – ${D.score[l]}`;
   const acts = `<div class="acts">${D.cfg.endActions.map(a => `<button class="${a.primary ? "primary" : "ghost"}" data-act="${a.act}">${a.label}</button>`).join("")}</div>`;
-  stage[w].innerHTML = `<p class="eyebrow">Duel over · ${line}</p>${big("You win!", "go")}<p class="rule">${name(w)} takes the duel.</p>${acts}`;
-  stage[l].innerHTML = `<p class="eyebrow">Duel over · ${line}</p>${big("So close", "muted")}<p class="rule">${name(w)} takes this one.</p>${acts}`;
-  halves[w].classList.add("flash");
+  stage[w].innerHTML = `<div class="resultcard"><p class="eyebrow">Duel over · ${line}</p>${big("You win!", "go win")}<p class="rule">${name(w)} takes the duel.</p>${acts}</div>`;
+  stage[l].innerHTML = `<div class="resultcard"><p class="eyebrow">Duel over · ${line}</p>${big("So close", "muted lose")}<p class="rule">${name(w)} takes this one.</p>${acts}</div>`;
+  replay(halves[w], "flash"); confetti(halves[w].querySelector(".face"), 60, 1.3);
+  setTimeout(() => confetti(halves[w].querySelector(".face"), 40, 1.6), 450);
 }
 
 function stopAll() {

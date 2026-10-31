@@ -16,10 +16,28 @@ SOUND.on = CFG.sound;
 const gameById = id => GAMES.find(g => g.id === id);
 const cleanName = v => (v || "").replace(/\s+/g, " ").trim().slice(0, 14);
 
+// Switch screens. A screen only animates in when it's newly shown, not when it re-renders in place.
+let CUR = null;
+const STAGGER = ".board li, .paylist li, .betlist > li, .glist li, .rcol, .plist li, .chips > *, .menu > *";
 function show(id) {
   exitGame();
+  const el = $(`#${id}`), changed = CUR !== id || el.hidden;
   $$(".screen").forEach(s => { s.hidden = s.id !== id; });
-  window.scrollTo(0, 0);
+  CUR = id;
+  if (changed) { window.scrollTo(0, 0); animateIn(el); }
+}
+function animateIn(el) {
+  if (REDUCED) return;
+  [...el.children].forEach((c, i) => {
+    const base = Math.min(i, 8) * 55;
+    c.style.animationDelay = `${base}ms`;
+    c.querySelectorAll(STAGGER).forEach(it => {
+      if (it.classList.contains("flip")) return;
+      const k = [...it.parentNode.children].indexOf(it);
+      it.classList.add("stg"); it.style.animationDelay = `${base + 90 + Math.min(k, 12) * 40}ms`;
+    });
+  });
+  replay(el, "enter"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("enter"), 1600);
 }
 function bind(id, fn) { $(`#${id}`).addEventListener("click", e => { const b = e.target.closest("[data-a]"); if (b && !b.disabled) fn(b.dataset.a, b); }); }
 const header = (title, back = "home", label = "Menu") => `<header class="topbar"><button class="back" data-a="${back}">← ${label}</button><h2>${title}</h2></header>`;
@@ -129,9 +147,21 @@ function roundName(r) {
   const left = T.rounds.length - 1 - r;
   return left === 0 ? "Final" : left === 1 ? "Semifinals" : left === 2 ? "Quarterfinals" : `Round ${r + 1}`;
 }
-function leaderboard(highlight) {
+// Points board. With `before` (points by player id), rows start in their old order and slide into the new one.
+function leaderboard(highlight, before) {
   const list = T.players.slice().sort((a, b) => b.pts - a.pts);
-  return `<ol class="board">${list.map((p, k) => `<li class="${p.id === highlight ? "hl" : ""}"><span class="rk">${k + 1}</span><span class="nm">${esc(p.name)}${T.champ === p.id ? ' <em class="crown">Champion</em>' : ""}</span><span class="pt">${p.pts}</span></li>`).join("")}</ol>`;
+  return `<ol class="board${before ? " flipping" : ""}">${list.map((p, k) => { const from = before && before[p.id] != null ? before[p.id] : p.pts; return `<li class="${p.id === highlight ? "hl" : ""}${before ? " flip" : ""}" data-id="${p.id}"><span class="rk">${k + 1}</span><span class="nm">${esc(p.name)}${T.champ === p.id ? ' <em class="crown">Champion</em>' : ""}</span><span class="pt" data-from="${from}" data-to="${p.pts}">${from}</span></li>`; }).join("")}</ol>`;
+}
+function playBoard(root, before) {
+  const ol = root.querySelector(".board.flipping"); if (!ol) return;
+  const items = [...ol.children];
+  const settle = () => items.forEach((li, k) => { li.querySelector(".rk").textContent = k + 1; const pt = li.querySelector(".pt"); countUp(pt, +pt.dataset.from, +pt.dataset.to, 900); if (+pt.dataset.from !== +pt.dataset.to) replay(li, "moved"); });
+  if (REDUCED) return items.forEach(li => { const pt = li.querySelector(".pt"); pt.textContent = pt.dataset.to; });
+  const old = items.slice().sort((a, b) => (before[b.dataset.id] ?? 0) - (before[a.dataset.id] ?? 0) || items.indexOf(a) - items.indexOf(b));
+  const pitch = items.length > 1 ? items[1].offsetTop - items[0].offsetTop : 0;
+  items.forEach((li, k) => { li.style.transition = "none"; li.style.transform = `translateY(${(old.indexOf(li) - k) * pitch}px)`; li.querySelector(".rk").textContent = old.indexOf(li) + 1; });
+  void ol.offsetWidth;
+  setTimeout(() => { items.forEach(li => { li.style.transition = "transform .75s cubic-bezier(.2,.8,.2,1)"; li.style.transform = ""; }); settle(); }, 700);
 }
 function renderBracket() {
   const cur = currentMatch();
@@ -222,13 +252,25 @@ function renderBets(g, go) {
   }
   saveT(); drawBets(); show("bets");
 }
+function betPools() { const pool = [0, 0]; for (const id in BETS) { const b = BETS[id]; if (b.side != null) pool[b.side] += b.amt; } return pool; }
+const oddsText = (pool, s) => `${pool[s]} pts · ${pool[s] ? `×${((pool[0] + pool[1]) / pool[s]).toFixed(2)}` : "—"}`;
+const lockLabel = (total, A, B) => `${total ? `Lock ${total} pts &amp; play` : "Play with no bets"}<small>Then hand the phone to ${esc(A.name)} and ${esc(B.name)}</small>`;
+function updateBets() {
+  const pool = betPools(), [A, B] = duelers();
+  for (const id in BETS) {
+    const b = BETS[id];
+    $$(`#bets [data-id="${id}"]`).forEach(btn => {
+      if (btn.dataset.a === "side") btn.setAttribute("aria-pressed", String(b.side === +btn.dataset.s));
+      else { btn.setAttribute("aria-pressed", String(b.amt === +btn.dataset.v)); btn.disabled = b.side == null; }
+    });
+  }
+  for (const s of [0, 1]) { const el = $(`#pool${s}`), t = oddsText(pool, s); if (el.textContent !== t) { el.textContent = t; replay(el, "bump"); } }
+  $("#lockBtn").innerHTML = lockLabel(pool[0] + pool[1], A, B);
+}
 function drawBets() {
   const g = BET_GAME, pd = T.pending, [A, B] = duelers();
   const watchers = T.players.filter(p => BETS[p.id]);
-  const pool = [0, 0];
-  for (const id in BETS) { const b = BETS[id]; if (b.side != null) pool[b.side] += b.amt; }
-  const total = pool[0] + pool[1];
-  const odds = s => pool[s] ? `×${(total / pool[s]).toFixed(2)}` : "—";
+  const pool = betPools(), total = pool[0] + pool[1];
   const amts = p => [10, 25, 50].filter(v => v < p.pts).concat([p.pts]);
   $("#bets").innerHTML = `${header("Bet on this game", "bracket", "Bracket")}
     <section class="gamecard">
@@ -238,8 +280,8 @@ function drawBets() {
       <p class="duelscore"><span class="red-t">${esc(A.name)} ${pd.score[0]}</span> – <span class="blue-t">${pd.score[1]} ${esc(B.name)}</span> · first to ${need()} wins the duel</p>
     </section>
     <section class="vsbig">
-      <div class="side red"><small>Bottom of phone</small><b>${esc(A.name)}</b><span>${pool[0]} pts · ${odds(0)}</span></div>
-      <div class="side blue"><small>Top of phone</small><b>${esc(B.name)}</b><span>${pool[1]} pts · ${odds(1)}</span></div>
+      <div class="side red"><small>Bottom of phone</small><b>${esc(A.name)}</b><span id="pool0">${oddsText(pool, 0)}</span></div>
+      <div class="side blue"><small>Top of phone</small><b>${esc(B.name)}</b><span id="pool1">${oddsText(pool, 1)}</span></div>
     </section>
     <p class="note">Pass the phone around. Who wins this game? Winners split the whole pot by stake, so backing the underdog pays more. A tie refunds everyone.</p>
     <ul class="betlist">${watchers.map(w => { const b = BETS[w.id]; return `<li class="bet">
@@ -247,7 +289,7 @@ function drawBets() {
       <div class="sides"><button class="sd red" data-a="side" data-id="${w.id}" data-s="0" aria-pressed="${b.side === 0}">${esc(A.name)}</button><button class="sd blue" data-a="side" data-id="${w.id}" data-s="1" aria-pressed="${b.side === 1}">${esc(B.name)}</button></div>
       <div class="amts">${amts(w).map(v => `<button class="amt" data-a="amt" data-id="${w.id}" data-v="${v}" aria-pressed="${b.amt === v}" ${b.side == null ? "disabled" : ""}>${v === w.pts ? `All in ${v}` : v}</button>`).join("")}</div>
     </li>`; }).join("")}</ul>
-    <button class="start" data-a="lock">${total ? `Lock ${total} pts &amp; play` : "Play with no bets"}<small>Then hand the phone to ${esc(A.name)} and ${esc(B.name)}</small></button>`;
+    <button class="start" data-a="lock" id="lockBtn">${lockLabel(total, A, B)}</button>`;
 }
 bind("bets", (a, b) => {
   if (a === "bracket") return renderBracket();
@@ -255,11 +297,12 @@ bind("bets", (a, b) => {
   if (a === "amt") { BETS[b.dataset.id].amt = +b.dataset.v; beep(600, 0.03); }
   if (a === "lock") {
     const bets = Object.entries(BETS).filter(([, x]) => x.side != null).map(([id, x]) => ({ id: +id, side: x.side, amt: Math.min(x.amt, P(+id).pts) }));
+    T.pending.snap = Object.fromEntries(T.players.map(p => [p.id, p.pts])); // for the animated points board later
     for (const x of bets) P(x.id).pts -= x.amt; // stakes leave the wallet when locked
     T.pending.bets = bets; saveT();
     audio(); return BET_GO();
   }
-  drawBets();
+  updateBets();
 });
 
 /* ---------- After each game: payouts, and the duel result when it's decided ---------- */
@@ -276,10 +319,11 @@ let PAY = null;
 function afterGame(w) {
   const pd = T.pending, cur = currentMatch(), m = cur.m, [A, B] = duelers();
   pd.score = D.score.slice();
+  const before = pd.snap || Object.fromEntries(T.players.map(p => [p.id, p.pts]));
   const game = gameById(pd.gameId), results = settleBets(pd.bets || [], w);
-  pd.bets = null; pd.gameId = null;
+  pd.bets = null; pd.gameId = null; pd.snap = null;
   const dw = [0, 1].find(p => pd.score[p] >= need());
-  PAY = { A, B, game, w, results, dw, round: pd.round, score: pd.score.slice() };
+  PAY = { A, B, game, w, results, dw, round: pd.round, score: pd.score.slice(), before };
   if (dw != null) {
     const winId = dw === 0 ? m.a : m.b;
     P(winId).pts += WIN_BONUS;
@@ -294,22 +338,26 @@ function afterGame(w) {
   renderPayout();
 }
 function renderPayout() {
-  const { A, B, game, w, results, dw, round, score } = PAY;
+  const { A, B, game, w, results, dw, round, score, before } = PAY;
   const nm = s => esc((s === 0 ? A : B).name);
   const line = `<span class="red-t">${esc(A.name)} ${score[0]}</span> – <span class="blue-t">${score[1]} ${esc(B.name)}</span>`;
   const hero = dw != null
     ? `<p class="eyebrow">Duel over</p><h2 class="huge">${nm(dw)} wins the duel</h2><p class="sub">${line} · +${WIN_BONUS} points for the win</p>`
     : `<p class="eyebrow">Game ${round} · ${game.name}</p><h2 class="huge">${w == null ? "Tie game" : `${nm(w)} takes it`}</h2><p class="sub">${line} · first to ${need()}${w == null ? " · bets refunded" : ""}</p>`;
   const list = results.length
-    ? `<ul class="paylist">${results.slice().sort((a, b) => b.net - a.net).map(r => `<li><span class="nm">${esc(P(r.id).name)}<small>${r.amt} on ${nm(r.side)}${r.refunded ? " · refunded" : ""}</small></span><span class="delta ${r.net > 0 ? "up" : r.net < 0 ? "down" : ""}">${r.net > 0 ? "+" : r.net < 0 ? "−" : "±"}${Math.abs(r.net)}</span><span class="pt">${P(r.id).pts}</span></li>`).join("")}</ul>`
+    ? `<ul class="paylist">${results.slice().sort((a, b) => b.net - a.net).map(r => `<li><span class="nm">${esc(P(r.id).name)}<small>${r.amt} on ${nm(r.side)}${r.refunded ? " · refunded" : ""}</small></span><span class="delta ${r.net > 0 ? "up" : r.net < 0 ? "down" : ""}" data-v="${r.net}">±0</span><span class="pt">${P(r.id).pts}</span></li>`).join("")}</ul>`
     : `<p class="note">No bets on this game.</p>`;
   const btn = dw == null
     ? `<button class="start" data-a="nextgame">Reveal the next game</button>`
     : `<button class="start" data-a="${T.done ? "final" : "bracket"}">${T.done ? "Crown the champion" : "Back to bracket"}</button>`;
   $("#payout").innerHTML = `<section class="hero">${hero}</section>
     <section><h3 class="label">Bets on ${esc(game.name)}</h3>${list}</section>
-    <section><h3 class="label">Points</h3>${leaderboard()}</section>${btn}`;
+    <section><h3 class="label">Points</h3>${leaderboard(null, before)}</section>${btn}`;
   show("payout");
+  const root = $("#payout"), sign = v => v > 0 ? "+" : v < 0 ? "−" : "±";
+  root.querySelectorAll(".delta").forEach(el => { const v = +el.dataset.v; setTimeout(() => countUp(el, 0, Math.abs(v), 650, x => sign(v) + x), REDUCED ? 0 : 350); });
+  playBoard(root, before);
+  if (dw != null) { confetti(root.querySelector(".hero"), 50, 1.4); fanfare(); }
 }
 bind("payout", a => a === "nextgame" ? runTournamentDuel() : a === "final" ? renderFinal() : renderBracket());
 
@@ -323,6 +371,8 @@ function renderFinal() {
     <button class="start" data-a="again">Rematch with the same players</button>
     <button class="btn big" data-a="home">Back to menu</button>`;
   show("final");
+  const hero = $("#final .hero");
+  confetti(hero, 70, 1.6); setTimeout(() => confetti(hero, 50, 1.8), 600); setTimeout(() => confetti(hero, 40, 1.2), 1300);
 }
 bind("final", a => {
   if (a === "again") return newTournament(T.players.map(p => p.name), T.bestOf, T.cats);

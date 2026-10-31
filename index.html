@@ -39,6 +39,8 @@
   --display:"Bowlby One","Arial Black",Impact,sans-serif;
   --body:"Rubik",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --emoji:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --spring:cubic-bezier(.34,1.56,.64,1);
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -202,6 +204,7 @@ h3.label small{letter-spacing:.04em;text-transform:none;font-size:12px;opacity:.
 .gname{margin:0;font:clamp(28px,8.5vw,48px)/1 var(--display);text-transform:uppercase;text-wrap:balance}
 .rule{margin:0;max-width:32ch;font-size:clamp(14px,4vw,17px);text-wrap:balance}
 .ready{margin-top:4px;padding:12px 22px;border-radius:999px;background:var(--white);color:var(--ink);font-weight:700;letter-spacing:.04em;animation:pulse 1.2s ease-in-out infinite}
+.ready{transition:background-color .25s,color .25s}
 .ready.done{background:var(--shade);color:var(--white);animation:none}
 .big{font:clamp(40px,14vw,96px)/1 var(--display);text-transform:uppercase}
 .big.muted{opacity:.55}
@@ -338,6 +341,77 @@ canvas.sketch{width:min(100%,340px);height:min(62%,240px);background:var(--card)
 .who{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .who .jb{padding:18px 10px;font-size:20px}
 
+/* ---------- Motion ---------- */
+button{transition:transform .14s var(--ease),background-color .2s,border-color .2s,color .2s,box-shadow .2s,opacity .2s}
+:where(button:not(:disabled):active){transform:scale(.96)}
+.pausebtn:active{transform:translateY(-50%) scale(.9)}
+.start:not(:disabled):active{transform:translateY(4px) scale(.99)}
+/* Screens rise in, then their lists ripple in */
+.screen.enter>*:not(.logo),.screen.enter .stg{animation:rise .5s var(--ease) both}
+.screen.enter .logo .top{animation:dropTop .7s var(--spring) both}
+.screen.enter .logo .seamline{animation:grow .6s .15s var(--ease) both}
+.screen.enter .logo .bottom{animation:riseIn .7s .1s var(--spring) both}
+.screen.enter .huge{animation:slam .6s .1s var(--spring) both}
+.hero,.screen{position:relative}
+.screen{overflow-x:hidden;overflow-x:clip}
+.m.cur{animation:glow 1.8s ease-in-out infinite}
+.vsbig span.bump{display:inline-block;animation:bump .45s var(--spring)}
+.board li.moved{animation:shine 1.2s .6s ease-out}
+.board li{will-change:transform}
+/* Duel screen: halves slide in from their own edges */
+.game.enter .half.p2{animation:inDown .5s var(--ease) both}
+.game.enter .half.p1{animation:inUp .5s var(--ease) both}
+.game.enter .seam{animation:grow .55s .1s var(--ease) both}
+.introcard,.resultcard{display:flex;flex-direction:column;align-items:center;gap:8px}
+.introcard>*{animation:rise .45s var(--ease) both}
+.introcard>:nth-child(2){animation:slam .55s .06s var(--spring) both}
+.introcard>:nth-child(3){animation-delay:.14s}
+.introcard>:nth-child(4){animation-delay:.24s}
+.introcard .ready{animation:rise .45s .24s var(--ease) both,pulse 1.2s .8s ease-in-out infinite}
+.introcard .ready.done{animation:none}
+.big.getset{animation:zoomIn .45s var(--spring) both}
+.big.win{animation:slam .55s var(--spring) both}
+.big.lose{animation:sink .5s var(--ease) both}
+.big.tie{animation:zoomIn .45s var(--spring) both}
+.resultcard>.eyebrow{animation:rise .35s var(--ease) both}
+.resultcard>.rule{animation:rise .4s .18s var(--ease) both}
+.resultcard>.acts{animation:rise .45s .35s var(--ease) both}
+.status b.bump{display:inline-block;animation:bump .7s .1s var(--spring)}
+.choices .ch{animation:rise .32s var(--ease) both}
+.choices .ch:nth-child(2){animation-delay:.04s}.choices .ch:nth-child(3){animation-delay:.08s}.choices .ch:nth-child(4){animation-delay:.12s}.choices .ch:nth-child(5){animation-delay:.16s}
+.ch.right{animation:bump .4s var(--spring)}
+.kp{animation:rise .35s var(--ease) both}
+.reveal>*{animation:zoomIn .4s var(--spring) both}
+.reveal>:nth-child(2){animation-delay:.18s}.reveal>:nth-child(3){animation-delay:.36s}
+.verdict{animation:rise .4s .4s var(--ease) both}
+.qtext,.gamecard{animation:rise .35s var(--ease) both}
+/* Overlays */
+.pause:not([hidden]),.judge:not([hidden]){animation:fadeIn .2s ease-out both}
+.pause .box,.judge .box{animation:boxIn .35s var(--spring) both}
+.chal:not([hidden]){animation:slideUp .4s var(--ease) both}
+.cwrap>*{animation:rise .45s var(--ease) both}
+.cwrap>:nth-child(2){animation-delay:.05s}.cwrap>:nth-child(3){animation-delay:.1s}.cwrap>:nth-child(4){animation-delay:.15s}.cwrap>:nth-child(5){animation-delay:.2s}.cwrap>:nth-child(n+6){animation-delay:.25s}
+/* Confetti */
+.confetti{position:absolute;left:0;right:0;bottom:0;height:0;pointer-events:none;z-index:4}
+.confetti i{position:absolute;bottom:0;width:8px;height:12px;border-radius:2px;animation:burst 1.5s cubic-bezier(.15,.7,.3,1) both}
+.hero .confetti{top:40%;bottom:auto}
+
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+@keyframes riseIn{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+@keyframes dropTop{from{opacity:0;transform:rotate(180deg) translateY(40px)}to{opacity:1;transform:rotate(180deg)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes slam{0%{opacity:0;transform:scale(1.6)}60%{opacity:1;transform:scale(.94)}100%{transform:scale(1)}}
+@keyframes sink{from{opacity:0;transform:translateY(-14px)}to{transform:none}}
+@keyframes zoomIn{from{opacity:0;transform:scale(.6)}to{opacity:1;transform:scale(1)}}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.6)}100%{transform:scale(1)}}
+@keyframes inUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes inDown{from{transform:translateY(-100%)}to{transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes boxIn{from{opacity:0;transform:scale(.88) translateY(10px)}to{opacity:1;transform:none}}
+@keyframes slideUp{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
+@keyframes glow{50%{box-shadow:0 0 0 4px rgba(255,200,61,.25),0 0 22px rgba(255,200,61,.35)}}
+@keyframes shine{0%{background:var(--night-3)}100%{background:var(--night-2)}}
+@keyframes burst{0%{opacity:1;transform:translate(0,0) rotate(0)}55%{opacity:1;transform:translate(var(--x),var(--y)) rotate(calc(var(--r)*.6))}100%{opacity:0;transform:translate(calc(var(--x)*1.25),calc(var(--y)*.2 + 60px)) rotate(var(--r))}}
 @keyframes pop{from{transform:scale(.7);opacity:.2}to{transform:scale(1);opacity:1}}
 @keyframes pulse{50%{transform:scale(1.05)}}
 @keyframes flash{from{opacity:.6}to{opacity:0}}
