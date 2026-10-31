@@ -105,17 +105,26 @@ Progress is saved in the browser, so a refresh doesn't lose the tournament.
 | Hum That Tune | Each player peeks at a secret song, then hums it. Whoever gets their song guessed by the crowd first wins. |
 | No-Um Speech | 30 seconds each on this topic. Say "um" or "uh", or pause too long, and you're out. If you both survive, best speech wins. |
 
-## Run it
+## Play it full screen (no bars)
 
-No build step and no dependencies. Open `index.html`, or serve the folder:
+1. Turn on GitHub Pages: repo **Settings → Pages → Build and deployment → Deploy from a branch**, pick the branch with the game and `/ (root)`, then Save.
+2. After a minute, open the Pages link (`https://ghurley4444.github.io/The-Berg-Project/`) in **Safari** on iPhone, or Chrome on Android.
+3. iPhone: tap **Share → Add to Home Screen**. Android: tap **⋮ → Add to Home screen** (or use the Full screen button in the menu).
+4. Open the game from the new home-screen icon. It runs full screen with no browser or Claude bars.
+
+Tournament progress is saved on that phone, so close and reopen any time.
+
+## Run it locally
+
+No build step and no dependencies. Serve the folder:
 
 ```sh
 python3 -m http.server 8000
 ```
 
-Then open `http://<your-computer-ip>:8000` on your phone (same Wi-Fi). For a permanent link, turn on GitHub Pages (Settings → Pages → deploy from `main`).
+Then open `http://<your-computer-ip>:8000` on your phone (same Wi-Fi).
 
-Tips: lock screen rotation, turn the volume up, and add the page to your home screen for full-screen play.
+Tips: lock screen rotation and turn the volume up.
 
 ## Adding content
 

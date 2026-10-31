@@ -25,6 +25,17 @@ function bind(id, fn) { $(`#${id}`).addEventListener("click", e => { const b = e
 const header = (title, back = "home", label = "Menu") => `<header class="topbar"><button class="back" data-a="${back}">← ${label}</button><h2>${title}</h2></header>`;
 
 /* ================= HOME ================= */
+// Full screen works in some browsers (e.g. Android Chrome). On iPhone, add the hosted page to the home screen instead.
+const canFull = () => { try { return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled); } catch (e) { return false; } };
+const isFull = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+function toggleFull() {
+  try {
+    const el = document.documentElement;
+    const p = isFull() ? (document.exitFullscreen || document.webkitExitFullscreen).call(document) : (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+document.addEventListener("fullscreenchange", () => { if (!$("#home").hidden) renderHome(); });
 function renderHome() {
   const live = T && !T.done;
   const enabled = GAMES.filter(g => !CFG.off.includes(g.id)).length;
@@ -33,7 +44,7 @@ function renderHome() {
     <button class="${live ? "btn big" : "start"}" data-a="new">New tournament<small>Bracket + betting for the whole party</small></button>
     <button class="btn big" data-a="quick">Quick duel<small>Just two players, no bets</small></button>
     <button class="btn big" data-a="library">Game library<small>${enabled} of ${GAMES.length} games switched on</small></button>
-    <button class="toggle" data-a="sound" aria-pressed="${SOUND.on}">Sound: ${SOUND.on ? "on" : "off"}</button>`;
+    <div class="row"><button class="toggle" data-a="sound" aria-pressed="${SOUND.on}">Sound: ${SOUND.on ? "on" : "off"}</button>${canFull() ? `<button class="toggle" data-a="full">${isFull() ? "Exit full screen" : "Full screen"}</button>` : ""}</div>`;
   show("home");
 }
 bind("home", a => {
@@ -42,6 +53,7 @@ bind("home", a => {
   else if (a === "new") renderSetup();
   else if (a === "quick") renderQuick();
   else if (a === "library") renderLibrary();
+  else if (a === "full") toggleFull();
   else if (a === "sound") { SOUND.on = CFG.sound = !SOUND.on; saveCfg(); renderHome(); beep(660, 0.06); }
 });
 
