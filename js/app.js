@@ -260,7 +260,8 @@ function renderBets(g, go) {
   saveT(); drawBets(); show("bets");
 }
 function betPools() { const pool = [0, 0]; for (const id in BETS) { const b = BETS[id]; if (b.side != null) pool[b.side] += b.amt; } return pool; }
-const oddsText = (pool, s) => `${pool[s]} pts · ${pool[s] ? `×${((pool[0] + pool[1]) / pool[s]).toFixed(2)}` : "—"}`;
+// Payout per point staked on side s: double, plus a share of the other side's pool.
+const oddsText = (pool, s) => `${pool[s]} pts · ×${(2 + (pool[s] ? pool[1 - s] / pool[s] : 0)).toFixed(2)}`;
 const lockLabel = (total, A, B) => `${total ? `Lock ${total} pts &amp; play` : "Play with no bets"}<small>Then hand the phone to ${esc(A.name)} and ${esc(B.name)}</small>`;
 function updateBets() {
   const pool = betPools(), [A, B] = duelers();
@@ -290,7 +291,7 @@ function drawBets() {
       <div class="side red"><small>Bottom of phone</small><b>${esc(A.name)}</b><span id="pool0">${oddsText(pool, 0)}</span></div>
       <div class="side blue"><small>Top of phone</small><b>${esc(B.name)}</b><span id="pool1">${oddsText(pool, 1)}</span></div>
     </section>
-    <p class="note">Pass the phone around. Who wins this game? Winners split the whole pot by stake, so backing the underdog pays more. A tie refunds everyone.</p>
+    <p class="note">Pass the phone around. Who wins this game? A winning bet pays at least double. Winners also split the losers' points, so backing the underdog pays more. A tie refunds everyone.</p>
     <ul class="betlist">${watchers.map(w => { const b = BETS[w.id]; return `<li class="bet">
       <div class="who"><b>${esc(w.name)}</b><span>${w.pts} pts${bailed.has(w.id) ? " · topped up" : ""}</span></div>
       <div class="sides"><button class="sd red" data-a="side" data-id="${w.id}" data-s="0" aria-pressed="${b.side === 0}">${esc(A.name)}</button><button class="sd blue" data-a="side" data-id="${w.id}" data-s="1" aria-pressed="${b.side === 1}">${esc(B.name)}</button></div>
@@ -315,9 +316,11 @@ bind("bets", (a, b) => {
 /* ---------- After each game: payouts, and the duel result when it's decided ---------- */
 function settleBets(bets, w) {
   if (w == null) { refund(bets); return bets.map(b => ({ ...b, net: 0, refunded: true })); }
-  const total = bets.reduce((s, b) => s + b.amt, 0), winPool = bets.filter(b => b.side === w).reduce((s, b) => s + b.amt, 0);
+  // A winning bet pays double (the house covers it), plus a share of the losers' points by stake.
+  const winPool = bets.filter(b => b.side === w).reduce((s, b) => s + b.amt, 0);
+  const losePool = bets.filter(b => b.side !== w).reduce((s, b) => s + b.amt, 0);
   return bets.map(b => {
-    const back = b.side === w ? Math.floor(b.amt * total / winPool) : 0;
+    const back = b.side === w ? 2 * b.amt + Math.floor(b.amt * losePool / winPool) : 0;
     P(b.id).pts += back;
     return { ...b, net: back - b.amt };
   });

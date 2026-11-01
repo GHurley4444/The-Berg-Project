@@ -3,7 +3,7 @@
 A duel tournament for a whole party, played on one phone.
 
 - **Tournament:** add everyone (2–16 players) and the app draws a bracket. Two people duel at a time.
-- **Betting:** everyone else starts with 100 points. Before every mini-game, the game and its rules are revealed, then the watchers bet on who'll win it. Winners split the whole pot by stake, so backing the underdog pays more. A tied game refunds all bets. Winning a duel earns the duelist 25 points.
+- **Betting:** everyone else starts with 100 points. Before every mini-game, the game and its rules are revealed, then the watchers bet on who'll win it. A winning bet pays at least double (the house covers it), and winners also split the losers' points by stake, so backing the underdog pays more. A tied game refunds all bets. Winning a duel earns the duelist 25 points.
 - **Duels:** lay the phone flat between the two duelists. Each owns one half of the screen, and the top half is flipped to face the far player. A duel is best of 1, 3 or 5 mini-games.
 - **Real-life challenges:** some games (staring contest, thumb war, arm wrestle…) happen off the screen. The phone shows the rules, a timer and any secret prompt, and the crowd picks the winner.
 - **Party Mix:** 33 of the best party games are on by default: quick, loud and easy to watch. The **game library** has the full 53, presets for Party Mix or All, and a Try button for each.
