@@ -2,6 +2,7 @@
 /* Party side: menus, tournament bracket, betting, payouts, quick duel and the game library. */
 
 const START_POINTS = 100, WIN_BONUS = 25, CHAMP_BONUS = 100, MIN_STAKE = 10;
+const GAME_WIN = 30, GAME_TIE = 10; // duelist points per mini-game; doubled in each bracket's final
 const STORE = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
@@ -113,7 +114,7 @@ function renderSetup(keep) {
       <h3 class="label">Game types <small>${pool} games in the mix</small></h3>
       <div class="chips">${Object.entries(CATS).map(([k, v]) => `<button class="chip" data-a="cat" data-v="${k}" aria-pressed="${SP.cats.includes(k)}">${v} <small>${GAMES.filter(g => g.cat === k && !CFG.off.includes(g.id)).length}</small></button>`).join("")}</div>
     </section>
-    <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Winning a duel earns ${WIN_BONUS} points and each bracket champion gets ${CHAMP_BONUS}. There are awards for the best (and worst) bettors at the end.</p>
+    <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Duelists earn ${GAME_WIN} points for every mini-game they win (${GAME_TIE} each for a tie), plus ${WIN_BONUS} for winning the duel. Each bracket champion gets ${CHAMP_BONUS}. In the final, mini-game points are doubled. There are awards for the best (and worst) bettors at the end.</p>
     <button class="start" data-a="go" ${n < 2 || !pool ? "disabled" : ""}>${n < 2 ? "Add at least 2 players" : !pool ? "Pick a game type" : `Start with ${n} players`}</button>`;
   show("setup");
   $("#addForm").addEventListener("submit", e => {
@@ -244,11 +245,14 @@ const need = () => Math.ceil(T.bestOf / 2);
 const duelers = () => { const m = currentMatch().m; return [P(m.a), P(m.b)]; };
 function refund(bets) { for (const b of bets) P(b.id).pts += b.amt; }
 
+const isFinal = () => { const c = currentMatch(); return !!c && c.r === T.rounds.length - 1 && T.rounds.length > 1; };
+const ptsMult = () => isFinal() ? 2 : 1;
 function runTournamentDuel() {
   const pd = T.pending, [A, B] = duelers();
   let carry = !!pd.gameId; // came back mid-duel: replay the game that was already revealed
   startDuel({
     names: [A.name, B.name], need: need(), score: pd.score, round: carry ? pd.round - 1 : pd.round,
+    winPts: GAME_WIN * ptsMult(), tiePts: GAME_TIE * ptsMult(),
     next: () => {
       if (carry) { carry = false; return gameById(pd.gameId); }
       if (pd.bets) { refund(pd.bets); pd.bets = null; } // game skipped from the pause menu
@@ -299,7 +303,7 @@ function drawBets() {
   const amts = p => [10, 25, 50].filter(v => v < p.pts).concat([p.pts]);
   $("#bets").innerHTML = `${header("Bet on this game", "bracket", "Bracket")}
     <section class="gamecard">
-      <p class="eyebrow">Game ${pd.round} · ${CATS[g.cat]}</p>
+      <p class="eyebrow">Game ${pd.round} · ${CATS[g.cat]}${isFinal() ? ' · <span class="dbl">Final: double points</span>' : ""}</p>
       <h3>${g.name}</h3>
       <p>${g.rule}</p>
       <p class="duelscore"><span class="red-t">${esc(A.name)} ${pd.score[0]}</span> – <span class="blue-t">${pd.score[1]} ${esc(B.name)}</span> · first to ${need()} wins the duel</p>
@@ -348,13 +352,16 @@ function afterGame(w) {
   pd.score = D.score.slice();
   const before = pd.snap || Object.fromEntries(T.players.map(p => [p.id, p.pts]));
   const game = gameById(pd.gameId), results = settleBets(pd.bets || [], w);
+  // Duelists score for every mini-game, Jackbox style. Doubled in the final.
+  const mult = ptsMult(), gamePts = w == null ? GAME_TIE * mult : GAME_WIN * mult;
+  if (w == null) { P(m.a).pts += gamePts; P(m.b).pts += gamePts; } else P(w === 0 ? m.a : m.b).pts += gamePts;
   // Keep a record of every game for the end-of-night awards.
   const pool = [0, 1].map(s => (pd.bets || []).filter(b => b.side === s).reduce((t, b) => t + b.amt, 0));
   T.log.push({ name: game.name, a: m.a, b: m.b, w, pool, bets: results.map(r => ({ id: r.id, side: r.side, amt: r.amt, net: r.net, allIn: !!r.allIn, refunded: !!r.refunded })) });
   if (w != null) { const gid = w === 0 ? m.a : m.b; (T.stats[gid] = T.stats[gid] || { gw: 0 }).gw++; }
   pd.bets = null; pd.gameId = null; pd.snap = null;
   const dw = [0, 1].find(p => pd.score[p] >= need());
-  PAY = { A, B, game, w, results, dw, round: pd.round, score: pd.score.slice(), before };
+  PAY = { A, B, game, w, results, dw, round: pd.round, score: pd.score.slice(), before, gamePts, mult };
   if (dw != null) {
     const winId = dw === 0 ? m.a : m.b;
     P(winId).pts += WIN_BONUS;
@@ -375,12 +382,13 @@ function afterGame(w) {
   }
   for (const p of T.players) T.low[p.id] = Math.min(T.low[p.id] ?? START_POINTS, p.pts);
   saveT();
-  if (dw == null && !results.length && !T.done) return nextGame(); // nobody bet: straight on to the next game
+  if (dw == null && T.players.length <= 2 && !T.done) return nextGame(); // no watchers: straight on to the next game
   renderPayout();
 }
 function renderPayout() {
-  const { A, B, game, w, results, dw, round, score, before, cupWon, goalHit, newCup } = PAY;
+  const { A, B, game, w, results, dw, round, score, before, cupWon, goalHit, newCup, gamePts, mult } = PAY;
   const nm = s => esc((s === 0 ? A : B).name);
+  const ptsLine = `<p class="gamepts"><b>+${gamePts}</b> ${w == null ? `each to ${esc(A.name)} and ${esc(B.name)} for the tie` : `to ${nm(w)} for winning ${esc(game.name)}`}${mult > 1 ? ' <span class="dbl">double points</span>' : ""}</p>`;
   const line = `<span class="red-t">${esc(A.name)} ${score[0]}</span> – <span class="blue-t">${score[1]} ${esc(B.name)}</span>`;
   const hero = dw != null
     ? `<p class="eyebrow">Duel over</p><h2 class="huge">${nm(dw)} wins the duel</h2><p class="sub">${line} · +${WIN_BONUS} points for the win${cupWon ? ` · wins bracket${T.goal ? " " + cupWon : ""}: +${CHAMP_BONUS} champion bonus` : ""}</p>`
@@ -393,7 +401,7 @@ function renderPayout() {
   const btn = T.done ? `<button class="start" data-a="final">See who won the night</button>`
     : dw == null ? `<button class="start" data-a="nextgame">Reveal the next game</button>`
     : `<button class="start" data-a="bracket">${newCup ? `See bracket ${newCup}` : "Back to bracket"}</button>`;
-  $("#payout").innerHTML = `<section class="hero">${hero}</section>${goalBanner}
+  $("#payout").innerHTML = `<section class="hero">${hero}${ptsLine}</section>${goalBanner}
     <section><h3 class="label">Bets on ${esc(game.name)}</h3>${list}</section>
     <section><h3 class="label">Points</h3>${leaderboard(null, before)}</section>${btn}`;
   show("payout");

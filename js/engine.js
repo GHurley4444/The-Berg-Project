@@ -239,8 +239,8 @@ function finish(R, w, m = {}) {
   renderStatus(w);
   const win = m.win || "Point to you.", lose = m.lose || (w != null ? `${name(w)} takes it.` : "");
   for (const p of [0, 1]) {
-    if (w == null) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Tie", "tie")}<p class="rule">${m.draw || "Nobody scores."}</p></div>`;
-    else if (p === w) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Point!", "go win")}<p class="rule">${win}</p></div>`;
+    if (w == null) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Tie", "tie")}<p class="rule">${m.draw || "Nobody wins this one."}</p>${D.cfg.tiePts ? `<p class="ptsbadge">+${D.cfg.tiePts} points each</p>` : ""}</div>`;
+    else if (p === w) stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Point!", "go win")}<p class="rule">${win}</p>${D.cfg.winPts ? `<p class="ptsbadge">+${D.cfg.winPts} points</p>` : ""}</div>`;
     else stage[p].innerHTML = `<div class="resultcard"><p class="eyebrow">${R.g.name}</p>${big("Nope", "muted lose")}<p class="rule">${lose}</p></div>`;
   }
   if (w != null) { replay(halves[w], "flash"); confetti(halves[w].querySelector(".face"), 26); beep(784, 0.1); setTimeout(() => beep(1046, 0.14), 100); buzz(50); }
