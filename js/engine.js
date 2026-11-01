@@ -8,7 +8,11 @@ const ri = (a, b) => Math.floor(rand(a, b + 1));
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const now = () => performance.now();
+// Game clock. It stops while the duel is paused, so timers, countdowns and moving things freeze in place.
+const CLOCK = { off: 0, at: null };
+const now = () => (CLOCK.at != null ? CLOCK.at : performance.now()) - CLOCK.off;
+function freezeClock() { if (CLOCK.at == null) CLOCK.at = performance.now(); }
+function thawClock() { if (CLOCK.at != null) { CLOCK.off += performance.now() - CLOCK.at; CLOCK.at = null; } }
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const big = (t, c = "") => `<div class="big ${c}">${t}</div>`;
 const choices = (opts, cls = "") => `<div class="choices ${cls}">${opts.map((o, i) => `<button class="ch" data-c="${i}">${o}</button>`).join("")}</div>`;
@@ -109,6 +113,7 @@ function onPointerUp(e) {
   const p = owner.get(e.pointerId);
   if (p == null) return;
   owner.delete(e.pointerId); active[p].delete(e.pointerId);
+  if (D.paused) { D.liftedWhilePaused = true; return; }
   if (D.phase === "play" && D.R && D.R.up) D.R.up(p, e);
 }
 window.addEventListener("pointerup", onPointerUp);
@@ -116,7 +121,7 @@ window.addEventListener("pointercancel", onPointerUp);
 document.addEventListener("contextmenu", e => { if (!$("#game").hidden) e.preventDefault(); });
 
 function onDown(p, e) {
-  if (now() < D.lockUntil) return;
+  if (D.paused || now() < D.lockUntil) return;
   if (D.phase === "intro") {
     if (D.ready[p]) return;
     D.ready[p] = true; beep(520, 0.06); markReady(p);
@@ -132,8 +137,18 @@ function onDown(p, e) {
 /* ---------- Round object handed to each mini-game ---------- */
 function newRound(g) {
   const R = { g, dead: false, timers: [], down: null, up: null, move: null };
-  R.after = (ms, fn) => { R.timers.push(setTimeout(() => { if (!R.dead) fn(); }, ms)); };
-  R.frame = fn => { const loop = () => { if (R.dead) return; fn(); if (!R.dead) requestAnimationFrame(loop); }; requestAnimationFrame(loop); };
+  // Timers run on the game clock, so they wait while the duel is paused.
+  R.after = (ms, fn) => { R.timers.push({ at: now() + ms, fn }); };
+  const tick = () => {
+    if (R.dead) return;
+    if (!D.paused && R.timers.length) {
+      const t = now(), due = R.timers.filter(x => x.at <= t).sort((a, b) => a.at - b.at);
+      if (due.length) { R.timers = R.timers.filter(x => x.at > t); for (const x of due) { if (R.dead) break; x.fn(); } }
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+  R.frame = fn => { const loop = () => { if (R.dead) return; if (!D.paused) fn(); if (!R.dead) requestAnimationFrame(loop); }; requestAnimationFrame(loop); };
   R.set = (p, html) => { stage[p].innerHTML = html; };
   R.both = html => { R.set(0, html); R.set(1, html); };
   R.q = (p, sel) => stage[p].querySelector(sel);
@@ -150,7 +165,7 @@ function newRound(g) {
   R.judge = (q, opts, cb) => judge(q, opts, i => { if (!R.dead) cb(i); });
   R.kill = () => {
     if (R.dead) return;
-    R.dead = true; R.timers.forEach(clearTimeout);
+    R.dead = true; R.timers = [];
     ov.innerHTML = ""; hideJudge(); setSplit(0);
     try { g.cleanup && g.cleanup(R); } catch (e) {}
   };
@@ -158,7 +173,10 @@ function newRound(g) {
 }
 
 /* ---------- Duel flow ---------- */
-function later(ms, fn) { clearTimeout(D.timer); D.timer = setTimeout(fn, ms); }
+function later(ms, fn) {
+  clearTimeout(D.timer); D.laterFn = fn; D.laterAt = performance.now() + ms;
+  D.timer = setTimeout(() => { D.laterFn = null; fn(); }, ms);
+}
 
 // cfg: { names:[bottom, top], need, next() -> game, endActions:[{label, act, primary}], onAction(act, winner), onQuit(),
 //        score?, round?, beforeGame?(game, go), afterGame?(winner|null) }
@@ -242,7 +260,8 @@ function duelOver(w) {
 }
 
 function stopAll() {
-  clearTimeout(D.timer);
+  clearTimeout(D.timer); D.laterFn = null; D.laterLeft = null;
+  D.paused = false; thawClock();
   if (D.R) { D.R.kill(); D.R = null; }
   setSplit(0); ov.innerHTML = ""; hideJudge();
   stopChalTimer(); $("#chal").hidden = true;
@@ -253,10 +272,28 @@ function exitGame() {
   $("#pause").hidden = true; $("#game").hidden = true;
 }
 
-$("#pauseBtn").addEventListener("click", () => {
-  if (D.phase === "over" || D.phase === "idle") return;
-  stopAll(); D.phase = "paused"; $("#pause").hidden = false;
-});
+// Pause freezes everything in place; Continue picks up exactly where you left off.
+function pauseDuel() {
+  if (D.paused || D.phase === "over" || D.phase === "idle") return;
+  D.paused = true; D.liftedWhilePaused = false; freezeClock();
+  if (D.laterFn) { clearTimeout(D.timer); D.laterLeft = Math.max(0, D.laterAt - performance.now()); }
+  if (D.chal && D.chal.iv) { stopChalTimer(); D.chal.wasRunning = true; }
+  // Games where you hold a finger down can't survive fingers lifting during a pause, so they restart.
+  const restarts = D.phase === "play" && D.game && D.game.holdToPlay;
+  $("#cont").textContent = restarts ? "Continue (restarts this game)" : "Continue";
+  $("#pause").hidden = false;
+}
+function resumeDuel() {
+  $("#pause").hidden = true;
+  const restarts = D.phase === "play" && D.game && D.game.holdToPlay;
+  D.paused = false; thawClock();
+  if (restarts) return intro();
+  if (D.laterFn && D.laterLeft != null) { const fn = D.laterFn; later(D.laterLeft, fn); D.laterLeft = null; }
+  if (D.chal && D.chal.wasRunning) { D.chal.wasRunning = false; D.chal.last = now(); D.chal.iv = setInterval(chalTick, 100); }
+  D.lockUntil = now() + 250; // ignore the tap that closed the menu
+}
+$("#pauseBtn").addEventListener("click", pauseDuel);
+$("#cont").addEventListener("click", resumeDuel);
 $("#resume").addEventListener("click", () => { $("#pause").hidden = true; intro(); });
 $("#skip").addEventListener("click", () => { $("#pause").hidden = true; nextGame(); });
 $("#quit").addEventListener("click", () => { const cb = D.cfg && D.cfg.onQuit; exitGame(); cb && cb(); });
@@ -318,7 +355,7 @@ $("#chal").addEventListener("click", e => {
     stopChalTimer(); c.run = false; c.t = D.game.timer.down || 0; $("#tval").textContent = fmtTime(c.t);
     const go = $('#chal [data-c="go"]'); if (go) go.textContent = "Start";
   } else if (a === "pause") {
-    stopAll(); D.phase = "paused"; $("#pause").hidden = false;
+    pauseDuel();
   } else if (/^[pm][01]$/.test(a)) {
     const p = +a[1], el = $(`#tally${p}`);
     c.tally[p] = Math.max(0, c.tally[p] + (a[0] === "p" ? 1 : -1));

@@ -24,7 +24,7 @@ const GAMES = [
       : R.foul(p, { win: `${name(p)} jumped the gun.`, lose: "Too early!" }));
   } },
 
-{ id: "letgo", cat: "reflex", name: "Let Go", rule: "Both press and hold. When LET GO appears, lift your finger first. Let go early and you lose.",
+{ id: "letgo", cat: "reflex", holdToPlay: true, name: "Let Go", rule: "Both press and hold. When LET GO appears, lift your finger first. Let go early and you lose.",
   start(R) {
     let phase = "wait";
     const render = () => {
@@ -516,7 +516,7 @@ const GAMES = [
     round();
   } },
 
-{ id: "bust", cat: "bluff", name: "Bust", rule: "Both hold to start. A multiplier climbs. Let go to bank it. It can crash any moment, and anyone still holding gets nothing. Highest bank wins.",
+{ id: "bust", cat: "bluff", holdToPlay: true, name: "Bust", rule: "Both hold to start. A multiplier climbs. Let go to bank it. It can crash any moment, and anyone still holding gets nothing. Highest bank wins.",
   start(R) {
     let phase = "wait", t0 = 0, m = 1;
     const bank = [null, null];
