@@ -7,9 +7,9 @@ const STORE = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   del(k) { try { localStorage.removeItem(k); } catch (e) {} }
 };
-const CFG = Object.assign({ off: [], sound: true, quickNames: ["Red", "Blue"], quickNeed: 3, players: [], bestOf: 3, cats: Object.keys(CATS) }, STORE.get("pg.cfg", {}));
+const CFG = Object.assign({ goalOn: true, goal: 500, off: [], sound: true, quickNames: ["Red", "Blue"], quickNeed: 3, players: [], bestOf: 3, cats: Object.keys(CATS) }, STORE.get("pg.cfg", {}));
 let T = STORE.get("pg.tour", null);
-if (T) { T.log = T.log || []; T.stats = T.stats || {}; T.low = T.low || {}; } // tournaments saved before awards existed
+if (T) { T.log = T.log || []; T.stats = T.stats || {}; T.low = T.low || {}; T.champs = T.champs || (T.champ != null ? [T.champ] : []); T.cup = T.cup || 1; } // tournaments saved before awards existed
 // The best party games: loud, quick, easy to watch, and worth betting on. Switched on by default.
 const PARTY_MIX = ["draw", "letgo", "color", "snap", "traffic", "pong", "odd", "tug", "targets", "balloon", "mole", "simon",
   "clock", "closest", "emoji", "bust", "rps", "trivia", "categories", "rhyme", "chain", "sketch",
@@ -66,7 +66,7 @@ function renderHome() {
   const live = T && !T.done;
   const enabled = GAMES.filter(g => !CFG.off.includes(g.id)).length;
   $("#home .menu").innerHTML = `
-    ${live ? `<button class="start" data-a="continue">Continue tournament<small>${T.players.length} players · ${roundName(currentMatch() ? currentMatch().r : T.rounds.length - 1)}</small></button>` : ""}
+    ${live ? `<button class="start" data-a="continue">Continue tournament<small>${T.players.length} players · ${cupName()}${roundName(currentMatch() ? currentMatch().r : T.rounds.length - 1)}${T.goal ? ` · first to ${T.goal}` : ""}</small></button>` : ""}
     <button class="${live ? "btn big" : "start"}" data-a="new">New tournament<small>Bracket + betting for the whole party</small></button>
     <button class="btn big" data-a="quick">Quick duel<small>Just two players, no bets</small></button>
     <button class="btn big" data-a="library">Game library<small>${enabled} of ${GAMES.length} games switched on</small></button>
@@ -84,9 +84,10 @@ bind("home", a => {
 });
 
 /* ================= TOURNAMENT SETUP ================= */
-const SP = { players: [], bestOf: 3, cats: [] };
+const SP = { players: [], bestOf: 3, cats: [], goalOn: true, goal: 500 };
+const GOAL_STEP = 50, GOAL_MIN = 150, GOAL_MAX = 5000;
 function renderSetup(keep) {
-  if (!keep) { SP.players = CFG.players.slice(); SP.bestOf = CFG.bestOf; SP.cats = CFG.cats.filter(c => CATS[c]); if (!SP.cats.length) SP.cats = Object.keys(CATS); }
+  if (!keep) { SP.players = CFG.players.slice(); SP.bestOf = CFG.bestOf; SP.cats = CFG.cats.filter(c => CATS[c]); if (!SP.cats.length) SP.cats = Object.keys(CATS); SP.goalOn = CFG.goalOn; SP.goal = CFG.goal; }
   const n = SP.players.length;
   const pool = GAMES.filter(g => SP.cats.includes(g.cat) && !CFG.off.includes(g.id)).length;
   $("#setup").innerHTML = `${header("New tournament")}
@@ -100,10 +101,19 @@ function renderSetup(keep) {
       <div class="seg">${[1, 3, 5].map(b => `<button data-a="bo" data-v="${b}" aria-checked="${SP.bestOf === b}" role="radio">Best of ${b}</button>`).join("")}</div>
     </section>
     <section>
+      <h3 class="label">How to win the night</h3>
+      <div class="seg text"><button data-a="gm" data-v="goal" role="radio" aria-checked="${SP.goalOn}">First to a points goal</button><button data-a="gm" data-v="one" role="radio" aria-checked="${!SP.goalOn}">Most points after one bracket</button></div>
+      ${SP.goalOn ? `<div class="goalrow">
+        <div class="goalstep"><button data-a="goal" data-v="-${GOAL_STEP}" aria-label="Lower the goal" ${SP.goal <= GOAL_MIN ? "disabled" : ""}>−</button><b>${SP.goal}</b><button data-a="goal" data-v="${GOAL_STEP}" aria-label="Raise the goal" ${SP.goal >= GOAL_MAX ? "disabled" : ""}>+</button></div>
+        <div class="chips">${[300, 500, 750, 1000].map(v => `<button class="chip" data-a="goalset" data-v="${v}" aria-pressed="${SP.goal === v}">${v}</button>`).join("")}</div>
+      </div>
+      <p class="note">The night ends the moment someone reaches ${SP.goal} points. If a bracket finishes first, a new one starts and points carry over.</p>` : `<p class="note">One bracket. Whoever has the most points when it ends wins the night.</p>`}
+    </section>
+    <section>
       <h3 class="label">Game types <small>${pool} games in the mix</small></h3>
       <div class="chips">${Object.entries(CATS).map(([k, v]) => `<button class="chip" data-a="cat" data-v="${k}" aria-pressed="${SP.cats.includes(k)}">${v} <small>${GAMES.filter(g => g.cat === k && !CFG.off.includes(g.id)).length}</small></button>`).join("")}</div>
     </section>
-    <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Winning a duel earns ${WIN_BONUS} points and the champion gets ${CHAMP_BONUS}. <b>Most points at the end wins the night</b>, and there are awards for the best (and worst) bettors.</p>
+    <p class="note">Everyone starts with ${START_POINTS} points. Each mini-game is revealed first, then the watchers bet on who'll win it. Winning a duel earns ${WIN_BONUS} points and each bracket champion gets ${CHAMP_BONUS}. There are awards for the best (and worst) bettors at the end.</p>
     <button class="start" data-a="go" ${n < 2 || !pool ? "disabled" : ""}>${n < 2 ? "Add at least 2 players" : !pool ? "Pick a game type" : `Start with ${n} players`}</button>`;
   show("setup");
   $("#addForm").addEventListener("submit", e => {
@@ -118,7 +128,10 @@ bind("setup", (a, b) => {
   if (a === "rm") { SP.players.splice(+b.dataset.i, 1); CFG.players = SP.players.slice(); saveCfg(); }
   if (a === "bo") { SP.bestOf = +b.dataset.v; CFG.bestOf = SP.bestOf; saveCfg(); }
   if (a === "cat") { const k = b.dataset.v; SP.cats = SP.cats.includes(k) ? SP.cats.filter(c => c !== k) : [...SP.cats, k]; CFG.cats = SP.cats.slice(); saveCfg(); }
-  if (a === "go") return newTournament(SP.players, SP.bestOf, SP.cats);
+  if (a === "gm") { SP.goalOn = b.dataset.v === "goal"; CFG.goalOn = SP.goalOn; saveCfg(); }
+  if (a === "goal") { SP.goal = clamp(SP.goal + +b.dataset.v, GOAL_MIN, GOAL_MAX); CFG.goal = SP.goal; saveCfg(); beep(500, 0.03); }
+  if (a === "goalset") { SP.goal = +b.dataset.v; CFG.goal = SP.goal; saveCfg(); beep(600, 0.03); }
+  if (a === "go") return newTournament(SP.players, SP.bestOf, SP.cats, SP.goalOn ? SP.goal : null);
   renderSetup(true);
 });
 
@@ -139,9 +152,10 @@ function makeBracket(ids) {
 function advance(rounds) {
   for (let r = 0; r < rounds.length - 1; r++) rounds[r].forEach((m, i) => { if (m.w != null) rounds[r + 1][i >> 1][i % 2 ? "b" : "a"] = m.w; });
 }
-function newTournament(names, bestOf, cats) {
+function newTournament(names, bestOf, cats, goal = null) {
   const players = names.map((n, i) => ({ id: i, name: n, pts: START_POINTS }));
-  T = { players, rounds: makeBracket(players.map(p => p.id)), bestOf, cats: cats.slice(), bag: [], pending: null, history: [], done: false, champ: null, log: [], stats: {}, low: {} };
+  T = { players, rounds: makeBracket(players.map(p => p.id)), bestOf, cats: cats.slice(), goal, cup: 1, champs: [], winner: null,
+    bag: [], pending: null, history: [], done: false, champ: null, log: [], stats: {}, low: {} };
   saveT(); renderBracket();
 }
 const P = id => T.players.find(p => p.id === id);
@@ -155,10 +169,12 @@ function roundName(r) {
   const left = T.rounds.length - 1 - r;
   return left === 0 ? "Final" : left === 1 ? "Semifinals" : left === 2 ? "Quarterfinals" : `Round ${r + 1}`;
 }
+const cupName = () => T.goal && T.cup > 1 ? `Bracket ${T.cup} · ` : "";
+const winRule = () => T.goal ? `first to ${T.goal} wins the night` : "most at the end wins the night";
 // Points board. With `before` (points by player id), rows start in their old order and slide into the new one.
 function leaderboard(highlight, before) {
   const list = T.players.slice().sort((a, b) => b.pts - a.pts);
-  return `<ol class="board${before ? " flipping" : ""}">${list.map((p, k) => { const from = before && before[p.id] != null ? before[p.id] : p.pts; return `<li class="${p.id === highlight ? "hl" : ""}${before ? " flip" : ""}" data-id="${p.id}"><span class="rk">${k + 1}</span><span class="nm">${esc(p.name)}${T.champ === p.id ? ' <em class="crown">Champion</em>' : ""}</span><span class="pt" data-from="${from}" data-to="${p.pts}">${from}</span></li>`; }).join("")}</ol>`;
+  return `<ol class="board${before ? " flipping" : ""}">${list.map((p, k) => { const from = before && before[p.id] != null ? before[p.id] : p.pts; return `<li class="${p.id === highlight ? "hl" : ""}${before ? " flip" : ""}" data-id="${p.id}"><span class="rk">${k + 1}</span><span class="nm">${esc(p.name)}${T.champ === p.id ? ' <em class="crown">Champion</em>' : ""}</span><span class="pt" data-from="${from}" data-to="${p.pts}">${from}</span>${T.goal ? `<i class="prog" style="--p:${Math.min(1, p.pts / T.goal).toFixed(3)}"></i>` : ""}</li>`; }).join("")}</ol>`;
 }
 function playBoard(root, before) {
   const ol = root.querySelector(".board.flipping"); if (!ol) return;
@@ -174,11 +190,11 @@ function playBoard(root, before) {
 function renderBracket() {
   const cur = currentMatch();
   let next = "";
-  if (T.done) next = `<section class="nextup done"><p class="eyebrow">Tournament over</p><h3>${esc(P(T.champ).name)} is the champion</h3><button class="start" data-a="final">See final results</button></section>`;
+  if (T.done) { const w = P(T.winner != null ? T.winner : T.players.slice().sort((a, b) => b.pts - a.pts)[0].id); next = `<section class="nextup done"><p class="eyebrow">Night over</p><h3>${esc(w.name)} wins the night</h3><button class="start" data-a="final">See final results</button></section>`; }
   else if (cur) {
     const A = P(cur.m.a), B = P(cur.m.b), watchers = T.players.length - 2;
     const resume = T.pending && T.pending.r === cur.r && T.pending.i === cur.i;
-    next = `<section class="nextup"><p class="eyebrow">Up next · ${roundName(cur.r)}</p>
+    next = `<section class="nextup"><p class="eyebrow">Up next · ${cupName()}${roundName(cur.r)}</p>
       <div class="vs"><span class="red-t">${esc(A.name)}</span><span class="v">vs</span><span class="blue-t">${esc(B.name)}</span></div>
       <button class="start" data-a="${resume ? "resume" : "duel"}">${resume ? "Resume duel" : watchers ? "Reveal the first game" : "Start duel"}${watchers ? "<small>Watchers bet once they see the game</small>" : ""}</button></section>`;
   }
@@ -190,7 +206,7 @@ function renderBracket() {
   }).join("")}</div>`).join("");
   $("#bracket").innerHTML = `${header("Tournament")}${next}
     <section><h3 class="label">Bracket</h3><div class="bscroll"><div class="bracket">${cols}</div></div></section>
-    <section><h3 class="label">Points <small>most at the end wins the night</small></h3>${leaderboard()}</section>
+    <section><h3 class="label">Points <small>${winRule()}</small></h3>${leaderboard()}</section>
     <button class="linkbtn" data-a="end">${T.endArm ? "Tap again to end the tournament" : "End tournament"}</button>`;
   show("bracket");
 }
@@ -346,34 +362,45 @@ function afterGame(w) {
     T.history.push({ r: cur.r, a: m.a, b: m.b, w: winId, score: pd.score.slice() });
     T.pending = null;
     const fin = T.rounds[T.rounds.length - 1][0];
-    if (fin.w != null) { T.done = true; T.champ = fin.w; P(fin.w).pts += CHAMP_BONUS; }
+    if (fin.w != null) {
+      T.champ = fin.w; T.champs.push(fin.w); P(fin.w).pts += CHAMP_BONUS; PAY.cupWon = T.cup;
+      if (!T.goal) T.done = true;
+    }
+  }
+  // Points goal: the night ends the moment someone reaches it, even mid-duel.
+  if (T.goal && !T.done) {
+    const hit = T.players.filter(p => p.pts >= T.goal).sort((a, b) => b.pts - a.pts)[0];
+    if (hit) { T.done = true; T.winner = hit.id; T.pending = null; PAY.goalHit = hit.id; }
+    else if (PAY.cupWon) { T.cup++; T.rounds = makeBracket(T.players.map(p => p.id)); PAY.newCup = T.cup; } // nobody there yet: new bracket, points carry over
   }
   for (const p of T.players) T.low[p.id] = Math.min(T.low[p.id] ?? START_POINTS, p.pts);
   saveT();
-  if (dw == null && !results.length) return nextGame(); // nobody bet: straight on to the next game
+  if (dw == null && !results.length && !T.done) return nextGame(); // nobody bet: straight on to the next game
   renderPayout();
 }
 function renderPayout() {
-  const { A, B, game, w, results, dw, round, score, before } = PAY;
+  const { A, B, game, w, results, dw, round, score, before, cupWon, goalHit, newCup } = PAY;
   const nm = s => esc((s === 0 ? A : B).name);
   const line = `<span class="red-t">${esc(A.name)} ${score[0]}</span> – <span class="blue-t">${score[1]} ${esc(B.name)}</span>`;
   const hero = dw != null
-    ? `<p class="eyebrow">Duel over</p><h2 class="huge">${nm(dw)} wins the duel</h2><p class="sub">${line} · +${WIN_BONUS} points for the win${T.done ? ` · +${CHAMP_BONUS} champion bonus` : ""}</p>`
+    ? `<p class="eyebrow">Duel over</p><h2 class="huge">${nm(dw)} wins the duel</h2><p class="sub">${line} · +${WIN_BONUS} points for the win${cupWon ? ` · wins bracket${T.goal ? " " + cupWon : ""}: +${CHAMP_BONUS} champion bonus` : ""}</p>`
     : `<p class="eyebrow">Game ${round} · ${game.name}</p><h2 class="huge">${w == null ? "Tie game" : `${nm(w)} takes it`}</h2><p class="sub">${line} · first to ${need()}${w == null ? " · bets refunded" : ""}</p>`;
   const list = results.length
     ? `<ul class="paylist">${results.slice().sort((a, b) => b.net - a.net).map(r => `<li><span class="nm">${esc(P(r.id).name)}<small>${r.amt} on ${nm(r.side)}${r.refunded ? " · refunded" : ""}</small></span><span class="delta ${r.net > 0 ? "up" : r.net < 0 ? "down" : ""}" data-v="${r.net}">±0</span><span class="pt">${P(r.id).pts}</span></li>`).join("")}</ul>`
     : `<p class="note">No bets on this game.</p>`;
-  const btn = dw == null
-    ? `<button class="start" data-a="nextgame">Reveal the next game</button>`
-    : `<button class="start" data-a="${T.done ? "final" : "bracket"}">${T.done ? "See who won the night" : "Back to bracket"}</button>`;
-  $("#payout").innerHTML = `<section class="hero">${hero}</section>
+  const goalBanner = goalHit != null ? `<div class="goalhit"><p class="eyebrow">Goal reached</p><b>${esc(P(goalHit).name)} hits ${T.goal} points!</b></div>`
+    : newCup ? `<div class="goalhit cup"><p class="eyebrow">Nobody has ${T.goal} yet</p><b>Bracket ${newCup} starts next</b><span>New matchups. Everyone keeps their points.</span></div>` : "";
+  const btn = T.done ? `<button class="start" data-a="final">See who won the night</button>`
+    : dw == null ? `<button class="start" data-a="nextgame">Reveal the next game</button>`
+    : `<button class="start" data-a="bracket">${newCup ? `See bracket ${newCup}` : "Back to bracket"}</button>`;
+  $("#payout").innerHTML = `<section class="hero">${hero}</section>${goalBanner}
     <section><h3 class="label">Bets on ${esc(game.name)}</h3>${list}</section>
     <section><h3 class="label">Points</h3>${leaderboard(null, before)}</section>${btn}`;
   show("payout");
   const root = $("#payout"), sign = v => v > 0 ? "+" : v < 0 ? "−" : "±";
   root.querySelectorAll(".delta").forEach(el => { const v = +el.dataset.v; setTimeout(() => countUp(el, 0, Math.abs(v), 650, x => sign(v) + x), REDUCED ? 0 : 350); });
   playBoard(root, before);
-  if (dw != null) { confetti(root.querySelector(".hero"), 50, 1.4); fanfare(); }
+  if (dw != null || goalHit != null) { confetti(root.querySelector(".hero"), 50, 1.4); fanfare(); }
 }
 bind("payout", a => a === "nextgame" ? runTournamentDuel() : a === "final" ? renderFinal() : renderBracket());
 
@@ -410,15 +437,15 @@ function awards() {
 }
 function renderFinal() {
   const ranked = T.players.slice().sort((a, b) => b.pts - a.pts), best = ranked[0].pts;
-  const winners = ranked.filter(p => p.pts === best), champ = P(T.champ);
+  const winners = T.winner != null ? [P(T.winner)] : ranked.filter(p => p.pts === best);
   const aw = awards();
   fanfare();
   $("#final").innerHTML = `${header("Final results")}
     <section class="hero"><p class="eyebrow">Winner of the night</p><h2 class="huge">${winners.map(p => esc(p.name)).join(" &amp; ")}</h2>
-      <p class="sub">${best} points${winners.length > 1 ? " each. A tie at the top!" : ""}</p></section>
-    <section class="champcard"><p class="eyebrow">Tournament champion</p><h3 class="mid">${esc(champ.name)}</h3><p class="sub">Won the bracket · +${CHAMP_BONUS} bonus points</p></section>
+      <p class="sub">${T.goal ? `First to ${T.goal} · finished on ${winners[0].pts} points` : `${best} points${winners.length > 1 ? " each. A tie at the top!" : ""}`}</p></section>
+    ${T.champs.length ? `<section class="champcard"><p class="eyebrow">${T.champs.length > 1 ? "Bracket champions" : "Tournament champion"}</p>${T.champs.map((id, k) => `<h3 class="mid">${esc(P(id).name)}${T.champs.length > 1 ? ` <small>bracket ${k + 1}</small>` : ""}</h3>`).join("")}<p class="sub">+${CHAMP_BONUS} bonus points for each bracket won</p></section>` : ""}
     ${aw.length ? `<section><h3 class="label">Awards</h3><div class="awards">${aw.map(([t, who, why, booby]) => `<div class="award${booby ? " booby" : ""}"><p class="eyebrow">${t}</p><b>${who}</b><span>${why}</span></div>`).join("")}</div></section>` : ""}
-    <section><h3 class="label">Final points</h3>${leaderboard(ranked[0].id)}</section>
+    <section><h3 class="label">Final points</h3>${leaderboard(winners[0].id)}</section>
     <button class="start" data-a="again">Rematch with the same players</button>
     <button class="btn big" data-a="home">Back to menu</button>`;
   show("final");
@@ -426,7 +453,7 @@ function renderFinal() {
   confetti(hero, 70, 1.6); setTimeout(() => confetti(hero, 50, 1.8), 600); setTimeout(() => confetti(hero, 40, 1.2), 1300);
 }
 bind("final", a => {
-  if (a === "again") return newTournament(T.players.map(p => p.name), T.bestOf, T.cats);
+  if (a === "again") return newTournament(T.players.map(p => p.name), T.bestOf, T.cats, T.goal);
   renderHome();
 });
 
